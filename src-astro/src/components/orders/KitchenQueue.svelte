@@ -16,6 +16,7 @@
   import { api } from '../../lib/api-client';
   import { isLocalMode } from '../../lib/local/localMode';
   import { isOrderStatus, ORDER_STATUS_LABELS } from '../../lib/orderStateMachine';
+  import { shouldSeedKdsDemo, isDemoFlaggedUrl } from '../../lib/kdsAutoSeed';
   import { mapOrder } from '../../lib/storeSync';
   import { normalizeOrdersPayload } from '../../lib/orderSync';
   import type { DomainRecord } from '../../lib/domain';
@@ -145,13 +146,30 @@
       pushLog('[kds] mesh unavailable — local-only mode');
     }
 
-    // Se espera a la sincronizacion con el backend antes de decidir si sembrar:
-    // sin el await, la lista aun vacia sembraba duplicados sobre pedidos que ya
-    // estaban en IndexedDB/D1 y todavia no habian llegado al store.
+    // Se espera a la sincronizacion con el backend antes de decidir si hay
+    // demo que pintar: sin el await, la lista aun vacia pintaba la demo sobre
+    // pedidos que ya estaban en IndexedDB/D1 y todavia no habian llegado al
+    // store.
+    // shouldSeedKdsDemo() es la unica puerta de la demo: en modo local solo
+    // abre con `?demo=1` explicito (ver kdsAutoSeed.ts). Sin bandera, estado
+    // vacio (EMPTY_LABELS) y cero escrituras en la base del restaurante.
     await pollBackend();
     pollHandle = setInterval(pollBackend, 15_000);
 
-    if (autoPublish && orders.list.length === 0) {
+    // Demo del KDS. Servidor (/dashboard/kitchen): fantasmas en memoria de
+    // siempre. Local (/local/*): SOLO con `?demo=1` explicito, y entonces por
+    // la API local (pedidos y mesas REALES en IndexedDB: los mismos que leen
+    // las transiciones y el cobro, nunca 404). Sin la bandera no hay opt-in
+    // implicito que valga: resembrar en cada cola vacia (inicio del dia, tras
+    // cobrar todo) contaminaba ventas/historial una vez cobrados.
+    if (
+      shouldSeedKdsDemo({
+        autoPublish,
+        orderCount: orders.list.length,
+        localMode: isLocalMode(),
+        demoFlag: isDemoFlaggedUrl(),
+      })
+    ) {
       if (isLocalMode()) {
         await seedLocalDemoOrders();
       } else {
@@ -170,35 +188,18 @@
     if (pollHandle) clearInterval(pollHandle);
   });
 
-  /** Mesa local por numero: la reutiliza si existe, la crea si no. Null si el backend no responde. */
-  async function ensureLocalTable(number: number): Promise<string | null> {
-    try {
-      const res = await api.get('/api/tables');
-      if (!res.ok) return null;
-      const data: unknown = await res.json();
-      const list = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
-      const found = list.find((t) => Number(t.number) === number && !t.deleted_at);
-      if (found && typeof found.id === 'string') return found.id;
-      const created = await api.post('/api/tables', { number, capacity: 4 });
-      if (!created.ok) return null;
-      const body = (await created.json()) as Record<string, unknown>;
-      return typeof body.id === 'string' ? body.id : null;
-    } catch {
-      return null;
-    }
-  }
-
   /**
-   * Semilla demo del KDS en modo local: pedidos REALES en IndexedDB (el mismo
-   * backend que leen las transiciones y el cobro), no fantasmas en memoria.
+   * Semilla demo del KDS en modo local, SOLO con `?demo=1` explicito en la URL
+   * (la puerta es shouldSeedKdsDemo: sin la bandera jamas se llama). Crea
+   * pedidos REALES en IndexedDB por la API local —el mismo backend que leen
+   * las transiciones y el cobro—, no fantasmas en memoria: la semilla
+   * anterior a esta politica empujaba `demo-<ts>-N` solo al store Svelte y el
+   * POST /api/orders/<demo-id>/transition respondia 404 "Order not found".
    *
-   * Causa raiz del E2E offline-local-first: la semilla anterior empujaba
-   * `demo-<ts>-N` solo al store Svelte; el POST /api/orders/<demo-id>/transition
-   * respondia 404 "Order not found" y el contador "por cobrar" nunca se movia.
-   * Aqui se crean las mesas que falten, se arman los pedidos con platos reales
-   * de la carta (el alta hidrata nombre/precio) y dos de ellos avanzan por la
-   * maquina de estados real. Sin carta no hay demo funcional: el KDS queda
-   * vacio en vez de pintar tarjetas que fallan al pulsarlas.
+   * Crea las mesas que falten, arma los pedidos con platos reales de la carta
+   * (el alta hidrata nombre/precio) y dos de ellos avanzan por la maquina de
+   * estados real. Sin carta no hay demo funcional: el KDS queda vacio en vez
+   * de pintar tarjetas que fallan al pulsarlas.
    */
   async function seedLocalDemoOrders(): Promise<void> {
     let ids: string[] = [];
@@ -272,7 +273,27 @@
     }
   }
 
+  /** Mesa local por numero: la reutiliza si existe, la crea si no. Null si el backend no responde. */
+  async function ensureLocalTable(number: number): Promise<string | null> {
+    try {
+      const res = await api.get('/api/tables');
+      if (!res.ok) return null;
+      const data: unknown = await res.json();
+      const list = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+      const found = list.find((t) => Number(t.number) === number && !t.deleted_at);
+      if (found && typeof found.id === 'string') return found.id;
+      const created = await api.post('/api/tables', { number, capacity: 4 });
+      if (!created.ok) return null;
+      const body = (await created.json()) as Record<string, unknown>;
+      return typeof body.id === 'string' ? body.id : null;
+    } catch {
+      return null;
+    }
+  }
+
   function demoSeed(): Order[] {
+    // Solo dashboard servido (/dashboard/kitchen): fantasmas en memoria a
+    // proposito, nunca pedidos reales. En modo local jamas se llama.
     const now = Date.now();
     // Precios en COP, no en euros: estos pedidos se pintan en la demo delante
     // del restaurante y "Café con leche $ 2.50" delata que la app no esta

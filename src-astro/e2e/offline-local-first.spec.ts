@@ -115,39 +115,13 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await expect(page.getByText('Mesa 1')).toBeVisible();
 
   // Pedidos y cocina en modo local (sin conexión): KDS rendering y cobro manual en efectivo.
-  // 1. Creamos un pedido por UI en Cocina simulando una creación desde el backend local primero para tener un pedido
-  await context.setOffline(false); // restaurar red local para que el backend local sirva
-  await page.evaluate(async () => {
-    let tRes = await fetch('/api/tables');
-    let tables = await tRes.json();
-    if (!tables || tables.length === 0) {
-      await fetch('/api/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: 1, capacity: 4 }) });
-      tRes = await fetch('/api/tables');
-      tables = await tRes.json();
-    }
-    const tableId = tables[0]?.id;
-    let mRes = await fetch('/api/menu-items');
-    let menu = await mRes.json();
-    if (!menu || menu.length < 2) {
-      const cRes = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Platos' }) });
-      const c = await cRes.json();
-      await fetch('/api/menu-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Sancocho', price: 18000, categoryId: c?.id }) });
-      await fetch('/api/menu-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Agua de panela', price: 4000, categoryId: c?.id }) });
-      mRes = await fetch('/api/menu-items');
-      menu = await mRes.json();
-    }
-    if (tableId && menu && menu.length >= 2) {
-      await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tableId, items: [{ menuItemId: menu[0].id, qty: 1 }, { menuItemId: menu[1].id, qty: 1 }] })
-      });
-    }
-  });
-
-  await context.setOffline(true);
-  await page.goto('/local/cocina/');
-  // Check the text of the pending order since KDS load logic might result in multiple orders when demo order triggers
+  // La demo es EXPLICITA (`?demo=1`, ver kdsAutoSeed.ts): sin la bandera el KDS local no escribe nada
+  // en la base del restaurante; con ella siembra 3 pedidos reales por la API local (los que mueven los
+  // contadores y las transiciones de abajo).
+  // Seguimos sin conexion: la cocina y su siembra demo explicita van por la API local (IndexedDB), sin red.
+  // (El `fetch` directo al servidor D1 no alimenta al KDS local: lee otro almacen.)
+  await page.goto('/local/cocina/?demo=1');
+  // Los 3 pedidos demo (pending/preparing/ready) salen de la siembra explicita por la API local.
   await expect(page.locator('.counter.pending')).not.toHaveText('0 ⏳ pendientes');
 
   // Transición del pedido en KDS
