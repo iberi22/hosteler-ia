@@ -114,15 +114,30 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await page.getByRole('button', { name: 'Añadir Mesa' }).click();
   await expect(page.getByText('Mesa 1')).toBeVisible();
 
-  // Pedidos y cocina en modo local (sin conexión): KDS rendering y cobro manual en efectivo.
-  // La demo es EXPLICITA (`?demo=1`, ver kdsAutoSeed.ts): sin la bandera el KDS local no escribe nada
-  // en la base del restaurante; con ella siembra 3 pedidos reales por la API local (los que mueven los
-  // contadores y las transiciones de abajo).
-  // Seguimos sin conexion: la cocina y su siembra demo explicita van por la API local (IndexedDB), sin red.
+  // Nuevo pedido por la UI en modo local (sin conexión): el flujo real del restaurante.
+  // La mesa 1 se pre-selecciona desde su tarjeta (accion por mesa de /local/mesas/).
+  // Todo va por la API local (IndexedDB), sin red.
   // (El `fetch` directo al servidor D1 no alimenta al KDS local: lee otro almacen.)
-  await page.goto('/local/cocina/?demo=1');
-  // Los 3 pedidos demo (pending/preparing/ready) salen de la siembra explicita por la API local.
-  await expect(page.locator('.counter.pending')).not.toHaveText('0 ⏳ pendientes');
+  // (La siembra demo EXPLICITA `?demo=1` de kdsAutoSeed.ts ya no hace falta en este flujo: el pedido
+  // lo crea el personal por la UI, asi que la base del restaurante no recibe pedidos demo.)
+  await page.getByRole('link', { name: 'Nuevo pedido' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Nuevo pedido' })).toBeVisible();
+  await expect(page.getByLabel('Mesa', { exact: true })).toHaveValue(/^.+$/, { timeout: 15_000 });
+  await expect(page.getByLabel('Mesa', { exact: true })).toContainText('Mesa 1');
+  for (const dish of DISHES) {
+    await page.getByRole('button', { name: `Añadir ${dish.name}` }).click();
+  }
+  // Total en marcha en COP (18000 + 4000).
+  await expect(page.getByTestId('take-order-total')).toContainText('22.000');
+  await page.getByRole('button', { name: 'Crear pedido' }).click();
+  await expect(page.getByText('Pedido creado')).toBeVisible();
+
+  // Pedidos y cocina en modo local (sin conexión): el pedido creado por la UI sale en pending
+  // via poll/store de la cola (sin recarga manual) y avanza por la maquina de estados.
+  await page.goto('/local/pedidos/');
+  await expect(page.locator('.counter.pending')).toHaveText('1 ⏳ pendientes', { timeout: 15_000 });
+  await page.goto('/local/cocina/');
+  await expect(page.locator('.counter.pending')).toHaveText('1 ⏳ pendientes', { timeout: 15_000 });
 
   // Transición del pedido en KDS
   await page.getByRole('button', { name: '→ preparing' }).first().click();
@@ -139,7 +154,8 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   // Cobrar: abre el modal y graba en IndexedDB
   await paidBtn.click();
   await expect(page.getByText('¿Cómo se cobró?')).toBeVisible();
-  // El pago es en efectivo por el total
+  // El pago es en efectivo por el total del pedido (18000 + 4000 = 22000).
+  await expect(page.getByLabel('Monto cobrado')).toHaveValue('22000');
   await page.getByRole('button', { name: 'Confirmar cobro' }).click();
   // Esperar a que el cobro quede grabado (la tarjeta sale del carril "por cobrar" solo tras el 201 +
   // persistir en IndexedDB): sin esta espera, el goto inmediato aborta la escritura asincrona en vuelo y
@@ -150,6 +166,8 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await page.goto('/local/pedidos/?status=paid');
   await page.reload();
   await expect(page.getByText('PAID')).toBeVisible();
+  await page.goto('/local/mesas/');
+  await expect(page.getByText('Mesa 1')).toBeVisible();
   await context.setOffline(false);
 
   // Ajustes en modo local: nada de plan, creditos ni consumo.
