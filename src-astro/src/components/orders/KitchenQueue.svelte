@@ -14,11 +14,13 @@
   } from '../../stores/orders.svelte';
   import { meshSubscribe, meshPublish } from '../../lib/mesh';
   import { api } from '../../lib/api-client';
+  import { isLocalMode } from '../../lib/local/localMode';
+  import { isOrderStatus, ORDER_STATUS_LABELS } from '../../lib/orderStateMachine';
   import { mapOrder } from '../../lib/storeSync';
   import { normalizeOrdersPayload } from '../../lib/orderSync';
   import type { DomainRecord } from '../../lib/domain';
 
-  let { autoPublish = true }: { autoPublish?: boolean } = $props();
+  let { autoPublish = true, statuses }: { autoPublish?: boolean; statuses?: OrderStatus[] } = $props();
 
   let unsub: (() => void) | null = null;
   let pollHandle: ReturnType<typeof setInterval> | null = null;
@@ -28,14 +30,53 @@
   // dispara desde ahi (boton "-> paid" con el formulario de metodo y monto).
   const ACTIVE_STATUSES: OrderStatus[] = ['pending', 'preparing', 'ready', 'served'];
 
-  const pending = $derived(orders.list.filter((o) => o.status === 'pending'));
-  const preparing = $derived(orders.list.filter((o) => o.status === 'preparing'));
-  const ready = $derived(orders.list.filter((o) => o.status === 'ready'));
-  const served = $derived(orders.list.filter((o) => o.status === 'served'));
+  /**
+   * Carriles visibles. Las paginas de pedidos (/dashboard/orders, /local/pedidos)
+   * pasan el filtro `?status=` de la URL: sin el, `?status=paid` pintaba los
+   * carriles activos y un pedido cobrado era invisible tras recargar. El KDS
+   * (cocina) no pasa filtro y sigue con los 4 carriles activos.
+   *
+   * El `?status=` de la URL en tiempo de ejecucion manda sobre la prop: las
+   * paginas prerenderizadas (/local/pedidos) congelan la prop en el build, asi
+   * que sin esta lectura el filtro nunca se aplicaria en ellas. No hay
+   * ViewTransitions en los layouts: cada navegacion monta la isla de nuevo.
+   */
+  function urlStatusFilter(): OrderStatus | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('status');
+      return isOrderStatus(raw) ? raw : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const urlFilter = urlStatusFilter();
+  const lanes = $derived(
+    urlFilter ? [urlFilter] : statuses && statuses.length > 0 ? [...statuses] : ACTIVE_STATUSES,
+  );
+
+  const COUNTER_LABELS: Record<OrderStatus, string> = {
+    pending: '⏳ pendientes',
+    preparing: '🔥 en cocina',
+    ready: '✅ listos',
+    served: '🍽️ por cobrar',
+    paid: '💰 cobrados',
+    cancelled: '🚫 cancelados',
+  };
+
+  const EMPTY_LABELS: Record<OrderStatus, string> = {
+    pending: 'Sin pedidos pendientes',
+    preparing: 'Sin pedidos en preparación',
+    ready: 'Sin pedidos listos',
+    served: 'Nada por cobrar',
+    paid: 'Nada cobrado',
+    cancelled: 'Sin pedidos cancelados',
+  };
 
   /** Index por estado, para que el #each de cada lane no tenga que ternarse. */
   const byStatus = $derived(
-    Object.fromEntries(ACTIVE_STATUSES.map((s) => [s, orders.list.filter((o) => o.status === s)])) as Record<
+    Object.fromEntries(lanes.map((s) => [s, orders.list.filter((o) => o.status === s)])) as Record<
       OrderStatus,
       typeof orders.list
     >,
@@ -104,15 +145,22 @@
       pushLog('[kds] mesh unavailable — local-only mode');
     }
 
-    pollBackend();
+    // Se espera a la sincronizacion con el backend antes de decidir si sembrar:
+    // sin el await, la lista aun vacia sembraba duplicados sobre pedidos que ya
+    // estaban en IndexedDB/D1 y todavia no habian llegado al store.
+    await pollBackend();
     pollHandle = setInterval(pollBackend, 15_000);
 
     if (autoPublish && orders.list.length === 0) {
-      const demo = demoSeed();
-      for (const o of demo) {
-        orders.list.push(o);
-        await meshPublish('order:created', o);
-        pushLog(`[kds] demo published ${o.id.slice(-6)}`);
+      if (isLocalMode()) {
+        await seedLocalDemoOrders();
+      } else {
+        const demo = demoSeed();
+        for (const o of demo) {
+          orders.list.push(o);
+          await meshPublish('order:created', o);
+          pushLog(`[kds] demo published ${o.id.slice(-6)}`);
+        }
       }
     }
   });
@@ -121,6 +169,108 @@
     unsub?.();
     if (pollHandle) clearInterval(pollHandle);
   });
+
+  /** Mesa local por numero: la reutiliza si existe, la crea si no. Null si el backend no responde. */
+  async function ensureLocalTable(number: number): Promise<string | null> {
+    try {
+      const res = await api.get('/api/tables');
+      if (!res.ok) return null;
+      const data: unknown = await res.json();
+      const list = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+      const found = list.find((t) => Number(t.number) === number && !t.deleted_at);
+      if (found && typeof found.id === 'string') return found.id;
+      const created = await api.post('/api/tables', { number, capacity: 4 });
+      if (!created.ok) return null;
+      const body = (await created.json()) as Record<string, unknown>;
+      return typeof body.id === 'string' ? body.id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Semilla demo del KDS en modo local: pedidos REALES en IndexedDB (el mismo
+   * backend que leen las transiciones y el cobro), no fantasmas en memoria.
+   *
+   * Causa raiz del E2E offline-local-first: la semilla anterior empujaba
+   * `demo-<ts>-N` solo al store Svelte; el POST /api/orders/<demo-id>/transition
+   * respondia 404 "Order not found" y el contador "por cobrar" nunca se movia.
+   * Aqui se crean las mesas que falten, se arman los pedidos con platos reales
+   * de la carta (el alta hidrata nombre/precio) y dos de ellos avanzan por la
+   * maquina de estados real. Sin carta no hay demo funcional: el KDS queda
+   * vacio en vez de pintar tarjetas que fallan al pulsarlas.
+   */
+  async function seedLocalDemoOrders(): Promise<void> {
+    let ids: string[] = [];
+    try {
+      const res = await api.get('/api/menu-items');
+      if (!res.ok) return;
+      const data: unknown = await res.json();
+      const raw = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+      ids = raw
+        .filter((m) => !m.deleted_at && m.isAvailable !== false && typeof m.id === 'string')
+        .map((m) => m.id as string);
+    } catch {
+      return;
+    }
+    if (ids.length === 0) return;
+
+    const pick = (i: number): string => ids[i % ids.length];
+    const plans: {
+      table: number;
+      items: { menuItemId: string; qty: number }[];
+      advance: OrderStatus[];
+      note?: string;
+    }[] = [
+      {
+        table: 3,
+        items: [{ menuItemId: pick(0), qty: 2 }, ...(ids.length > 1 ? [{ menuItemId: pick(1), qty: 1 }] : [])],
+        advance: [],
+      },
+      {
+        table: 7,
+        items: [{ menuItemId: pick(0), qty: 1 }, ...(ids.length > 1 ? [{ menuItemId: pick(1), qty: 1 }] : [])],
+        advance: ['preparing'],
+        note: 'Sin cebolla',
+      },
+      {
+        table: 12,
+        items: [{ menuItemId: pick(ids.length - 1), qty: 1 }],
+        advance: ['preparing', 'ready'],
+      },
+    ];
+
+    for (const plan of plans) {
+      try {
+        const tableId = await ensureLocalTable(plan.table);
+        if (!tableId) continue;
+        const created = await api.post('/api/orders', {
+          tableId,
+          items: plan.items,
+          ...(plan.note ? { note: plan.note } : {}),
+        });
+        if (!created.ok) continue;
+        let rec = (await created.json()) as DomainRecord;
+        let ok = true;
+        for (const to of plan.advance) {
+          const recId = String((rec as unknown as Record<string, unknown>).id);
+          const tr = await api.post(`/api/orders/${encodeURIComponent(recId)}/transition`, { to });
+          if (!tr.ok) {
+            ok = false;
+            break;
+          }
+          rec = (await tr.json()) as DomainRecord;
+        }
+        if (!ok) continue;
+        const o = mapOrder(rec) as Order;
+        orders.list.push(o);
+        await meshPublish('order:created', o);
+        pushLog(`[kds] demo publicada ${o.id.slice(-6)} (${o.status})`);
+      } catch {
+        continue;
+      }
+    }
+  }
 
   function demoSeed(): Order[] {
     const now = Date.now();
@@ -177,26 +327,19 @@
   <header class="kds-header">
     <h2>🍳 Cocina — KDS Realtime</h2>
     <div class="counters" aria-label="Contadores KDS">
-      <span class="counter pending">{pending.length} ⏳ pendientes</span>
-      <span class="counter preparing">{preparing.length} 🔥 en cocina</span>
-      <span class="counter ready">{ready.length} ✅ listos</span>
-      <span class="counter served">{served.length} 🍽️ por cobrar</span>
+      {#each lanes as status (status)}
+        <span class="counter {status}">{byStatus[status].length} {COUNTER_LABELS[status]}</span>
+      {/each}
     </div>
   </header>
 
   <div class="kds-grid">
-    {#each ACTIVE_STATUSES as status (status)}
+    {#each lanes as status (status)}
       <div class="lane" data-status={status}>
-        <h3 class="lane-title">{status.toUpperCase()}</h3>
+        <h3 class="lane-title">{ORDER_STATUS_LABELS[status].toUpperCase()}</h3>
         <div class="lane-items">
-          {#if status === 'pending' && pending.length === 0}
-            <p class="empty">Sin pedidos pendientes</p>
-          {:else if status === 'preparing' && preparing.length === 0}
-            <p class="empty">Sin pedidos en preparación</p>
-          {:else if status === 'ready' && ready.length === 0}
-            <p class="empty">Sin pedidos listos</p>
-          {:else if status === 'served' && served.length === 0}
-            <p class="empty">Nada por cobrar</p>
+          {#if byStatus[status].length === 0}
+            <p class="empty">{EMPTY_LABELS[status]}</p>
           {/if}
           {#each byStatus[status] as o (o.id)}
             <OrderCard order={o} onStatusChange={handleStatusChange} />
@@ -245,6 +388,8 @@
   .counter.preparing { border-color: var(--swal-accent-cyan); color: var(--swal-accent-cyan); }
   .counter.ready { color: var(--swal-success); border-color: var(--swal-success); }
   .counter.served { color: #a78bfa; border-color: #a78bfa; }
+  .counter.paid { color: var(--swal-success); border-color: var(--swal-success); }
+  .counter.cancelled { color: var(--swal-danger, #ef4444); border-color: var(--swal-danger, #ef4444); }
 
   .kds-grid {
     display: grid;
@@ -264,6 +409,9 @@
   .lane[data-status='preparing'] { border-left: 3px solid var(--swal-accent-cyan); }
   .lane[data-status='ready'] { border-left: 3px solid var(--swal-success); }
   .lane[data-status='pending'] { border-left: 3px solid var(--swal-accent-orange); }
+  .lane[data-status='served'] { border-left: 3px solid #a78bfa; }
+  .lane[data-status='paid'] { border-left: 3px solid var(--swal-success); }
+  .lane[data-status='cancelled'] { border-left: 3px solid var(--swal-danger, #ef4444); }
   .lane-title {
     margin: 0;
     font-size: 0.78rem;

@@ -167,6 +167,10 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await expect(page.getByText('¿Cómo se cobró?')).toBeVisible();
   // El pago es en efectivo por el total
   await page.getByRole('button', { name: 'Confirmar cobro' }).click();
+  // Esperar a que el cobro quede grabado (la tarjeta sale del carril "por cobrar" solo tras el 201 +
+  // persistir en IndexedDB): sin esta espera, el goto inmediato aborta la escritura asincrona en vuelo y
+  // la recarga no encuentra el pedido cobrado. No relaja ninguna asercion, solo sincroniza con el guardado.
+  await expect(page.locator('.counter.served')).toHaveText('0 🍽️ por cobrar', { timeout: 15_000 });
 
   // Recargamos la página offline y la mesa y los pedidos servidos siguen ahí (en la vista de pedidos)
   await page.goto('/local/pedidos/?status=paid');

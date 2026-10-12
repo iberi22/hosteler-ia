@@ -145,6 +145,51 @@ describe('localApi — mismos handlers de /api sobre IndexedDB', () => {
     expect(await getIdbAdapter().list('category', LOCAL)).toHaveLength(0);
   });
 
+  it('flujo local de pedido: mesa -> pedido -> transiciones -> servido -> cobro manual queda paid', async () => {
+    const cat = await post('/api/categories', { name: 'Almuerzos' });
+    expect(cat.status).toBe(201);
+    const dishA = await post('/api/menu-items', { name: 'Sancocho', price: 18000, categoryId: cat.body.id });
+    const dishB = await post('/api/menu-items', { name: 'Agua de panela', price: 4000, categoryId: cat.body.id });
+    expect(dishA.status).toBe(201);
+    expect(dishB.status).toBe(201);
+
+    const table = await post('/api/tables', { number: 1, capacity: 4 });
+    expect(table.status).toBe(201);
+
+    const order = await post('/api/orders', {
+      tableId: table.body.id,
+      items: [{ menuItemId: dishA.body.id, qty: 1 }, { menuItemId: dishB.body.id, qty: 1 }],
+    });
+    expect(order.status).toBe(201);
+    expect(order.body.status).toBe('pending');
+    // El alta hidrata nombre y precio desde la carta para que el KDS pinte el total.
+    expect(order.body.items).toMatchObject([
+      { menuItemId: dishA.body.id, name: 'Sancocho', qty: 1, unitPrice: 18000 },
+      { menuItemId: dishB.body.id, name: 'Agua de panela', qty: 1, unitPrice: 4000 },
+    ]);
+
+    for (const to of ['preparing', 'ready', 'served']) {
+      const tr = await post(`/api/orders/${order.body.id}/transition`, { to });
+      expect(tr.status, to).toBe(200);
+      expect(tr.body.status).toBe(to);
+    }
+
+    const pay = await post(`/api/orders/${order.body.id}/payment`, { method: 'efectivo', amount: 22000 });
+    expect(pay.status).toBe(201);
+    expect(pay.body.order.status).toBe('paid');
+    expect(pay.body.payment).toMatchObject({ method: 'efectivo', amount: 22000, source: 'manual' });
+
+    const paid = await call('/api/orders?status=paid');
+    expect(paid.status).toBe(200);
+    expect(paid.body.map((o: { id: string }) => o.id)).toContain(order.body.id);
+  });
+
+  it('transicion de un pedido inexistente responde 404 (el KDS solo muestra pedidos reales)', async () => {
+    const tr = await post('/api/orders/demo-1/transition', { to: 'preparing' });
+    expect(tr.status).toBe(404);
+    expect(tr.body.error).toMatch(/not found/i);
+  });
+
   it('forceInstanceInBody siempre sobrescribe instance_id', () => {
     expect(JSON.parse(forceInstanceInBody('{"instance_id":"otra","a":1}', 'local-x') ?? '')).toEqual({ instance_id: 'local-x', a: 1 });
     expect(forceInstanceInBody('[]', 'local-x')).toBeNull();

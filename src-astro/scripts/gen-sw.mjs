@@ -13,6 +13,13 @@ const { count, size, warnings } = await generateSW({
   skipWaiting: true,
   clientsClaim: true,
 
+  // El filtro `?status=` de las paginas de pedidos (/local/pedidos, /dashboard/orders) es un asunto del
+  // cliente: el shell precacheado es el mismo con o sin el. Sin ignorarlo, la coincidencia con el precache
+  // falla (`local/pedidos/index.html?status=paid` no existe) y la navegacion offline cae a /offline aunque la
+  // pagina este precacheada: el E2E offline-local-first recarga `/local/pedidos/?status=paid` sin red y debe
+  // ver el pedido cobrado, no "Sin conexion".
+  ignoreURLParametersMatching: [/^status$/],
+
   // Navegaciones: RED PRIMERO y la pagina offline SOLO si la red falla.
   //
   // Antes se usaba `navigateFallback: '/offline/index.html'`. En Workbox eso NO es "cuando falla la red":
