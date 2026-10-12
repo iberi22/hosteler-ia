@@ -1,0 +1,83 @@
+---
+import { StatusBadge } from "@swal/ui";
+import KitchenQueue from "../../components/orders/KitchenQueue.svelte";
+import LocalLayout from "../../layouts/LocalLayout.astro";
+
+export const prerender = true;
+---
+
+<LocalLayout title="Cocina — Fi'ze KDS (Local)">
+  <main class="kds-page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/local/">← Inicio</a>
+      <span>/</span>
+      <span>KDS Cocina</span>
+    </nav>
+
+    <div class="hero">
+      <h1>Kitchen Display System</h1>
+      <p class="hero-sub">
+        Pedidos en tiempo real · estados: pending → preparing → ready → served → paid (cancelled disponible desde pending/preparing).
+      </p>
+      <p class="staff-hint">
+        Uso para el personal: haz clic en una tarjeta para avanzar de estado; la cancelación solo es posible desde pending o preparing.
+      </p>
+      <div class="health-row">
+        <span class="health-item"><StatusBadge status="warning" /> offline buffer</span>
+      </div>
+    </div>
+
+    <KitchenQueue client:load autoPublish={true} />
+  </main>
+</LocalLayout>
+
+<style>
+  .kds-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--swal-text-muted);
+    font-size: 0.85rem;
+  }
+  .crumbs a {
+    color: var(--swal-accent-cyan);
+    text-decoration: none;
+  }
+  .crumbs a:hover { text-decoration: underline; }
+  .hero {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .hero h1 {
+    margin: 0;
+    color: var(--swal-text);
+    font-size: 1.6rem;
+  }
+  .hero-sub {
+    color: var(--swal-text-secondary);
+    font-size: 0.95rem;
+    margin: 0;
+  }
+  .staff-hint {
+    color: var(--swal-text-muted);
+    font-size: 0.85rem;
+    margin: 0;
+  }
+  .health-row {
+    display: flex;
+    gap: 0.85rem;
+    align-items: center;
+    flex-wrap: wrap;
+    color: var(--swal-text-secondary);
+    font-size: 0.85rem;
+  }
+  .health-item { display: flex; gap: 0.4rem; align-items: center; }
+</style>

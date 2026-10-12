@@ -5,6 +5,21 @@
 export const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'served', 'paid', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+/**
+ * Etiquetas humanas (es) para chips y carriles. Los slugs en ingles solo salen
+ * en la URL (`?status=`), los botones de transicion (`→ served`) y la insignia
+ * tecnica de la tarjeta (`order.status.toUpperCase()`): son la jerga del
+ * personal y del E2E offline-local-first, que localiza el pedido por `PAID`.
+ */
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  pending: 'Pendientes',
+  preparing: 'En cocina',
+  ready: 'Listos',
+  served: 'Por cobrar',
+  paid: 'Cobrados',
+  cancelled: 'Cancelados',
+};
+
 const TRANSITIONS: Record<Exclude<OrderStatus, 'paid' | 'cancelled'>, OrderStatus[]> = {
   pending: ['preparing', 'cancelled'],
   preparing: ['ready', 'cancelled'],

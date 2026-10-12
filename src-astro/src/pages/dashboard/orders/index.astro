@@ -2,12 +2,15 @@
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import KitchenQueue from '../../../components/orders/KitchenQueue.svelte';
 import { Card } from '@swal/ui';
-import { ORDER_STATUSES, isOrderStatus } from '../../../lib/orderStateMachine';
+import { ORDER_STATUSES, ORDER_STATUS_LABELS, isOrderStatus } from '../../../lib/orderStateMachine';
 
 // Filter chips link to /dashboard/orders/?status=X, updating searchParams and the documented API URL
 // for staff tooling & REST consumers, while KitchenQueue manages the live active kitchen queue.
 const rawStatus = Astro.url.searchParams.get('status');
 const activeStatus = isOrderStatus(rawStatus) ? rawStatus : null;
+// El KDS filtra sus carriles por estos estados: sin filtro muestra el listado
+// completo (incluye paid/cancelled), con `?status=X` solo ese carril.
+const laneStatuses = activeStatus ? [activeStatus] : [...ORDER_STATUSES];
 
 const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=${activeStatus}` : ''}`;
 ---
@@ -47,14 +50,14 @@ const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=
               href={`/dashboard/orders/?status=${status}`}
               class={`chip ${activeStatus === status ? 'active' : ''}`}
             >
-              {status}
+              {ORDER_STATUS_LABELS[status]}
             </a>
           ))}
         </div>
       </div>
     </Card>
 
-    <KitchenQueue client:load autoPublish={false} />
+    <KitchenQueue client:load autoPublish={false} statuses={laneStatuses} />
 
     <Card variant="elevated" padding="md">
       <h2>API de Pedidos</h2>
