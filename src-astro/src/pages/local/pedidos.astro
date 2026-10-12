@@ -1,5 +1,5 @@
 ---
-import { Card } from "@swal/ui";
+import { Button, Card } from "@swal/ui";
 import KitchenQueue from "../../components/orders/KitchenQueue.svelte";
 
 export const prerender = true;
@@ -28,6 +28,7 @@ const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=
         <h1>Pedidos</h1>
         <p class="sub">Listado de pedidos en tiempo real — Local</p>
       </div>
+      <Button variant="primary" href="/local/nuevo-pedido/">Nuevo pedido</Button>
     </header>
 
     <Card variant="surface" padding="md">

@@ -19,7 +19,9 @@ const { count, size, warnings } = await generateSW({
   // pagina este precacheada: el E2E offline-local-first recarga `/local/pedidos/?status=paid` sin red y debe
   // ver el pedido cobrado, no "Sin conexion". `demo` es la bandera explicita de la demo del KDS
   // (`/local/cocina/?demo=1`, ver kdsAutoSeed.ts): el mismo shell, el mismo motivo.
-  ignoreURLParametersMatching: [/^status$/, /^demo$/],
+  // `mesa` pre-selecciona la mesa en /local/nuevo-pedido/ (ver TakeOrderForm.svelte): el shell
+  // precacheado es el mismo con o sin el, asi que se ignora para que el enlace por mesa abra sin red.
+  ignoreURLParametersMatching: [/^status$/, /^demo$/, /^mesa$/],
 
   // Navegaciones: RED PRIMERO y la pagina offline SOLO si la red falla.
   //

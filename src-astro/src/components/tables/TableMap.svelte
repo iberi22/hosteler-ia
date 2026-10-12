@@ -12,7 +12,12 @@
     status?: 'vacant' | 'occupied';
   };
 
-  let { onCountChange = (_count: number) => {} } = $props<{ onCountChange?: (count: number) => void }>();
+  let { onCountChange = (_count: number) => {}, newOrderBase = null } = $props<{
+    onCountChange?: (count: number) => void;
+    /** Base del flujo de toma (p. ej. `/local/nuevo-pedido/`): si se pasa, cada mesa ofrece
+        un enlace "Nuevo pedido" con `?mesa=<id>`. El dashboard no lo pasa y queda igual. */
+    newOrderBase?: string | null;
+  }>();
 
   let tables = $state<Table[]>([]);
   let loading = $state(true);
@@ -159,6 +164,13 @@
             </div>
           </div>
           <div class="meta">{t.capacity} pax</div>
+          {#if newOrderBase}
+            <a
+              class="order-link"
+              href="{newOrderBase}?mesa={encodeURIComponent(t.id)}"
+              onclick={(e) => e.stopPropagation()}
+            >Nuevo pedido</a>
+          {/if}
         </Card>
       {/each}
     </div>
@@ -181,6 +193,12 @@
   .head-right { display: flex; align-items: center; gap: 0.25rem; }
   .num { font-weight: 700; color: var(--swal-text); font-family: var(--swal-font-mono); }
   .meta { font-size: 0.8rem; color: var(--swal-text-muted); margin-top: 0.25rem; }
+  .order-link {
+    display: inline-block; margin-top: 0.4rem; font-size: 0.82rem; font-weight: 600;
+    color: var(--swal-accent-cyan); text-decoration: none;
+  }
+  .order-link:hover { text-decoration: underline; }
+  .order-link:focus-visible { outline: 2px solid var(--swal-accent-cyan); outline-offset: 1px; }
   :global(.table-card) { cursor: pointer; }
   :global(.table-card:hover) { border-color: var(--swal-accent); }
   :global(.del-btn) { padding: 0.1rem 0.4rem !important; min-width: auto !important; height: auto !important; color: var(--swal-text-muted); }
