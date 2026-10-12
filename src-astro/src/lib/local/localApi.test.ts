@@ -95,7 +95,7 @@ describe('localApi — mismos handlers de /api sobre IndexedDB', () => {
   });
 
   it('rutas sin implementar en local responden 501 y nunca van a la red', async () => {
-    const res = await call('/api/orders');
+    const res = await call('/api/ruta-inexistente');
     expect(res.status).toBe(501);
     expect(res.body.error).toMatch(/modo local/);
   });

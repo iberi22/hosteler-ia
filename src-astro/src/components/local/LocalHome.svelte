@@ -87,6 +87,18 @@
         <h2>Carta</h2>
         <p>{dishes} {dishes === 1 ? 'plato' : 'platos'}. Edita precios, categorías y disponibilidad.</p>
       </a>
+      <a class="l-card tile" href="/local/mesas/">
+        <h2>Mesas</h2>
+        <p>Gestión de mesas y códigos QR de pedido.</p>
+      </a>
+      <a class="l-card tile" href="/local/pedidos/">
+        <h2>Pedidos</h2>
+        <p>Listado de pedidos en tiempo real.</p>
+      </a>
+      <a class="l-card tile" href="/local/cocina/">
+        <h2>Cocina</h2>
+        <p>Kitchen Display System.</p>
+      </a>
       <a class="l-card tile" href="/local/publicar/">
         <h2>Publicar y QR</h2>
         <p>{settings.lastPublishedAt ? `Publicada el ${fmt(settings.lastPublishedAt)}.` : 'Aún sin publicar.'} Imprime el QR de tus mesas.</p>

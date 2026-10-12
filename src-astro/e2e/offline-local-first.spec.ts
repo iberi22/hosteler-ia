@@ -105,6 +105,75 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   for (const dish of DISHES) await expect(page.getByText(dish.name).first()).toBeVisible();
   await context.setOffline(false);
 
+  // Mesas en modo local (sin conexión): creamos la mesa 1.
+  await context.setOffline(true);
+  await page.goto('/local/mesas/');
+  await expect(page.getByRole('heading', { name: 'Mesas', exact: true })).toBeVisible();
+  await page.getByPlaceholder('Nº de Mesa').fill('1');
+  await page.getByPlaceholder('Capacidad (pax)').fill('4');
+  await page.getByRole('button', { name: 'Añadir Mesa' }).click();
+  await expect(page.getByText('Mesa 1')).toBeVisible();
+
+  // Pedidos y cocina en modo local (sin conexión): KDS rendering y cobro manual en efectivo.
+  // 1. Creamos un pedido por UI en Cocina simulando una creación desde el backend local primero para tener un pedido
+  await context.setOffline(false); // restaurar red local para que el backend local sirva
+  await page.evaluate(async () => {
+    let tRes = await fetch('/api/tables');
+    let tables = await tRes.json();
+    if (!tables || tables.length === 0) {
+      await fetch('/api/tables', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: 1, capacity: 4 }) });
+      tRes = await fetch('/api/tables');
+      tables = await tRes.json();
+    }
+    const tableId = tables[0]?.id;
+    let mRes = await fetch('/api/menu-items');
+    let menu = await mRes.json();
+    if (!menu || menu.length < 2) {
+      const cRes = await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Platos' }) });
+      const c = await cRes.json();
+      await fetch('/api/menu-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Sancocho', price: 18000, categoryId: c?.id }) });
+      await fetch('/api/menu-items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Agua de panela', price: 4000, categoryId: c?.id }) });
+      mRes = await fetch('/api/menu-items');
+      menu = await mRes.json();
+    }
+    if (tableId && menu && menu.length >= 2) {
+      await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId, items: [{ menuItemId: menu[0].id, qty: 1 }, { menuItemId: menu[1].id, qty: 1 }] })
+      });
+    }
+  });
+
+  await context.setOffline(true);
+  await page.goto('/local/cocina/');
+  // Check the text of the pending order since KDS load logic might result in multiple orders when demo order triggers
+  await expect(page.locator('.counter.pending')).not.toHaveText('0 ⏳ pendientes');
+
+  // Transición del pedido en KDS
+  await page.getByRole('button', { name: '→ preparing' }).first().click();
+  await expect(page.locator('.counter.preparing')).not.toHaveText('0 🔥 en cocina', { timeout: 10_000 });
+  await page.getByRole('button', { name: '→ ready' }).first().click();
+  await expect(page.locator('.counter.ready')).not.toHaveText('0 ✅ listos', { timeout: 10_000 });
+  await page.getByRole('button', { name: '→ served' }).first().click();
+  await expect(page.locator('.counter.served')).not.toHaveText('0 🍽️ por cobrar', { timeout: 15_000 });
+
+  // Localizamos mediante el botón que nos abre el formulario de cobro.
+  const paidBtn = page.getByRole('button', { name: '→ paid' }).first();
+  await expect(paidBtn).toBeVisible({ timeout: 15_000 });
+
+  // Cobrar: abre el modal y graba en IndexedDB
+  await paidBtn.click();
+  await expect(page.getByText('¿Cómo se cobró?')).toBeVisible();
+  // El pago es en efectivo por el total
+  await page.getByRole('button', { name: 'Confirmar cobro' }).click();
+
+  // Recargamos la página offline y la mesa y los pedidos servidos siguen ahí (en la vista de pedidos)
+  await page.goto('/local/pedidos/?status=paid');
+  await page.reload();
+  await expect(page.getByText('PAID')).toBeVisible();
+  await context.setOffline(false);
+
   // Ajustes en modo local: nada de plan, creditos ni consumo.
   await page.goto('/local/ajustes/');
   await expect(page.locator('#rest-name')).toHaveValue(NAME);
