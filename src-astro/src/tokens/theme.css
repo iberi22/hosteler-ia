@@ -1,0 +1,19 @@
+/* Fi'ze — hoja de puente del tema.
+
+  ANTES este archivo importaba el canon y luego REAFIRMABA los colores Edge-Hive
+  (--swal-bg: #020617, --swal-accent: #06b6d4, --swal-accent-orange: #f97316).
+  Eso hacia dos cosas malas:
+
+    1. Pisaba el tema del core por orden de cascada. Aunque el core se actualice,
+       estas tres lineas ganan siempre y la app nunca cambiaba de tema.
+    2. Dejaba vivo --swal-accent-orange, un token que el tema Bone ya no define.
+
+  Ademas la app NUNCA lo cargo: BaseLayout lo referenciaba con un
+  <script src="/src/tokens/theme.css">, que el navegador pide como JavaScript y
+  descarta. O sea, ni el bridge ni el canon se aplicaban; la app se veia con los
+  colores hardcodeados de cada componente.
+
+  Ahora el tema llega entero y sin overrides desde @swal/ui/tokens.css
+  (importado en BaseLayout.astro). Si Fi'ze necesita apartarse del canon, se
+  documenta aqui el motivo, pero no se redefine --swal-bg ni --swal-accent: esos
+  dos son el contrato del tema Bone (hueso claro / grafito oscuro). */

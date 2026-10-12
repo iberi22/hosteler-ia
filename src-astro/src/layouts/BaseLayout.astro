@@ -1,0 +1,191 @@
+---
+import { Toaster } from "@swal/ui";
+import OfflineIndicator from "../components/OfflineIndicator.svelte";
+import InstallPrompt from "../components/InstallPrompt.svelte";
+import StaffShell from "../components/StaffShell.svelte";
+import { themeBootScript } from "@swal/ui/theme-boot";
+
+// Tema Bone del core @swal/ui, importado en build. Se importa DENTRO del <style> (y no con un
+// <link> a /node_modules/...): en el adaptador Cloudflare /node_modules no se sirve y da 404.
+// Y no con `?inline` + set:html: ese HTML inline lo inserta el layout como texto y queda fuera del
+// pipeline de estilos de Astro, que es quien calcula los hashes del CSP (security.csp). Con el
+// @import normal el CSS se procesa, se emite como asset /_astro/*.css y `style-src 'self'` lo cubre.
+
+interface Props {
+  title?: string;
+  currentPath?: string;
+  showNav?: boolean;
+  /** Descripcion para buscadores y tarjetas al compartir. */
+  description?: string;
+  /** URL canonica absoluta; si falta no se emite. */
+  canonical?: string;
+}
+// currentPath sale de la URL si la pagina no lo pasa: Mesas, Pedidos, Cocina y
+// Analitica no lo pasaban, caian al "/" por defecto y su item nunca se marcaba.
+const { title = "Fi'ze - Smart Hosteleria", currentPath = Astro.url.pathname, showNav = false, description = "Fi'ze — Smart Hosteleria AI", canonical } = Astro.props;
+
+// Destinos del menu. "Inicio" existe para que la landing tambien tenga una
+// seccion activa: sin el, en "/" ningun item se marcaba y no se sabia donde
+// estaba uno. Los iconos son nombres del registro del core (@swal/ui/icons).
+// La seccion activa la calcula el shell del core (isNavActive): "/" solo
+// coincide exacto y el resto por segmento.
+const NAV = [
+  { href: "/", label: "Inicio", icon: "home" },
+  { href: "/dashboard/tables", label: "Mesas", icon: "table" },
+  { href: "/dashboard/orders", label: "Pedidos", icon: "clipboard" },
+  { href: "/dashboard/kitchen", label: "Cocina", icon: "chef" },
+  { href: "/dashboard/inventory", label: "Inventario", icon: "package" },
+  { href: "/dashboard/menu", label: "Menú", icon: "utensils" },
+  { href: "/dashboard/recipes", label: "Recetas", icon: "book" },
+  { href: "/dashboard/purchases", label: "Compras", icon: "receipt" },
+  { href: "/dashboard/notifications", label: "Avisos", icon: "activity" },
+  { href: "/pair", label: "Emparejar", icon: "device" },
+];
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    {canonical && <link rel="canonical" href={canonical} />}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Fize" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:locale" content="es_CO" />
+    {canonical && <meta property="og:url" content={canonical} />}
+    <meta name="twitter:card" content="summary" />
+    <!-- Color de la barra del navegador en movil / PWA. Debe coincidir con el
+         fondo del tema: con cyan Edge-Hive la barra desentonaba, y con el
+         grafito anterior tampoco — ahora es el carbon mineral del tema Bone.
+         CSS var() no vale en <meta>, asi que se fija el valor y el tema claro
+         se resuelve con la media query siguiente. -->
+    <meta name="theme-color" content="#121211" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf9f5" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Fi'ze" />
+    <title>{title}</title>
+    <!-- registerSW.js lo emite vite-plugin-pwa pero con output:'server' + el
+         adaptador Cloudflare nunca se inyecta en el HTML: sin esta linea el
+         service worker no se registra y la PWA no es instalable ni funciona
+         offline. Se carga con defer para no bloquear el render. -->
+    <script src="/registerSW.js" defer is:inline></script>
+
+    <!--
+      Tema: se aplica ANTES de pintar, y por script en vez de atributo fijo.
+
+      Estaba `<html data-theme="dark">` en el markup. Eso no era un tema oscuro,
+      era un tema oscuro FIJO: el atributo gana sobre el bloque
+      `@media (prefers-color-scheme)` del CSS, asi que un usuario con el sistema
+      claro recibia siempre la app oscura y no podia cambiarla. Verificado en
+      produccion: con data-theme=light puesto a mano el fondo era #faf9f5, pero
+      al recargar volvia a #121211 sin importar la preferencia.
+
+      Aqui no se pone el atributo: se deja que el CSS siga al sistema, y este
+      script solo aplica una ELECCION explicita guardada en localStorage. Asi
+      (a) por defecto la app sigue al sistema, (b) el usuario puede fijar tema,
+      (c) no hay destello de tema equivocado al cargar.
+    -->
+    <script is:inline set:html={themeBootScript()}></script>
+    <!--
+      El tema se carga con un import de Vite en el frontmatter, NO con
+      <script src="...css">.
+
+      Antes estaba escrito como <script src="...">, que hace dos cosas malas:
+        1. el navegador pide el CSS como si fuera JavaScript y lo descarta;
+        2. la ruta /node_modules/... da 404 en el build de Cloudflare.
+      O sea: ninguna de las dos hojas de tokens se aplicaba jamas y la app
+      venia con colores hardcodeados. El import mete el CSS en el bundle de
+      Vite y garantiza que exista en dist/.
+    -->
+    <style is:global>
+      @import "@swal/ui/tokens.css";
+    </style>
+  </head>
+  <body>
+    <InstallPrompt client:load />
+    <OfflineIndicator client:load />
+    <!-- Shell del core: columna lateral en escritorio, barra superior con menu
+         desplegable en movil. Se hidrata para plegar el menu; sin JS queda
+         abierto y el boton no se pinta, asi que ningun destino se pierde. -->
+    <!-- El body de Fize pinta la malla ambiental (--swal-mesh): el shell no
+         puede tapar el fondo con su solido --swal-bg, de ahi el style. -->
+    <StaffShell items={NAV} {currentPath} {showNav} menuLabel="Menú" style="background: transparent" client:load>
+      <slot />
+    </StaffShell>
+    <Toaster client:load position="bottom-right" />
+  </body>
+</html>
+
+<style is:global>
+  /* La familia del cuerpo es la del tema (--swal-font, sans del sistema). La
+     monoespaciada (--swal-font-mono) queda para datos: rutas, estados, cifras. */
+  :root {
+    --font-sans: var(--swal-font, ui-sans-serif, system-ui, sans-serif);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    /* La malla ambiental va en el body, no en cada tarjeta: es lo que da la
+       sensacion de papel bajo luz. Los degradados son tonos piedra casi
+       indistinguibles entre si; se perciben como "hay algo ahi", no como color.
+       Los fallbacks del var() son del tema Bone: si el CSS del core no llega,
+       estos valores son lo unico que ve el usuario. */
+    background: var(--swal-bg, #121211);
+    background-image: var(--swal-mesh);
+    background-attachment: fixed;
+    color: var(--swal-text, #f5f5f4);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+  }
+
+  /* El <style> de este layout ya es is:global, asi que los selectores se
+     escriben sin :global(); ":global(html)" suelto lo rechaza lightningcss
+     ("not recognized as a valid pseudo-class"). */
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  /*
+   * WCAG 2.2 2.4.11 (Focus Not Obscured, AA) — tecnica C43 (scroll-padding).
+   * La carta publica tiene una barra de pedido fija abajo; sin esto, al tabular
+   * hasta el ultimo plato el foco queda debajo de la barra y el teclado se
+   * queda "perdido". El padding inferior reserva el alto de la barra y el
+   * lateral el ancho del sidebar.
+   */
+  html {
+    scroll-padding-block: 7rem;
+    scroll-padding-inline: 1rem;
+    /* Respeta a quien pidio menos movimiento: el scroll por ancla no debe animar. */
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+
+  /* WCAG 2.4.7 Focus Visible — el foco se dibuja solo con navegacion por teclado.
+     Con el acento del tema (marfil en oscuro, grafito en claro): el mismo anillo
+     que define el core, y no el naranja de Edge-Hive. */
+  :where(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--swal-accent, #f5f5f4);
+    outline-offset: 2px;
+  }
+
+  /* Campo de busqueda/texto que se ajusta al contenido — Baseline 2026.
+     Se usa solo como mejora progresiva: sin soporte, el input queda fijo. */
+  :where(input[type='text'], input[type='search'], input[type='email'], input[type='tel']):not([size]) {
+    field-sizing: content;
+    min-width: 12rem;
+    max-width: 100%;
+  }
+</style>

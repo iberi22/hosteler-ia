@@ -1,0 +1,11 @@
+---
+// /local/respaldo/ — modo local (docs/producto/NODO-LOCAL.md §2.1). Estatica y precacheada: abre sin red.
+import LocalLayout from '../../layouts/LocalLayout.astro';
+import LocalView from '../../components/local/LocalView.svelte';
+
+export const prerender = true;
+---
+
+<LocalLayout title="Copia de seguridad — Fize en este equipo">
+  <LocalView view="respaldo" client:load />
+</LocalLayout>

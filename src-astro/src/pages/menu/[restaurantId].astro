@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PublicMenu from '../../components/menu/PublicMenu.svelte';
+import { createStorageAdapter } from '../../lib/storageAdapter';
+import { domainConfig } from '../../lib/domain.config';
+import { loadPublicMenu } from '../../lib/publicMenu';
+
+const { restaurantId } = Astro.params;
+const instanceId = Astro.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+
+if (!restaurantId) {
+  return Astro.redirect('/');
+}
+
+const adapter = createStorageAdapter(Astro.locals);
+const menu = await loadPublicMenu(adapter, instanceId, restaurantId);
+
+if (!menu.restaurant) {
+  return new Response('Restaurante no encontrado', { status: 404 });
+}
+---
+<BaseLayout title={`${menu.restaurant.name} — Carta`} currentPath={`/menu/${restaurantId}`} showNav={false}>
+  <PublicMenu
+    client:load
+    instanceId={instanceId}
+    restaurantId={menu.restaurant.id}
+    restaurantName={menu.restaurant.name}
+    categories={menu.categories}
+    items={menu.items}
+  />
+</BaseLayout>

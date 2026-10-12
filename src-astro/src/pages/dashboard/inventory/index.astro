@@ -1,0 +1,67 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import InventoryStats from '../../../components/inventory/InventoryStats.svelte';
+import StockAlerts from '../../../components/inventory/StockAlerts.svelte';
+import PredictionCard from '../../../components/inventory/PredictionCard.svelte';
+import InventoryManager from '../../../components/inventory/InventoryManager.svelte';
+import { inventory } from '../../../stores/inventory.svelte';
+---
+
+<BaseLayout showNav title="Inventario — Fi'ze" currentPath="/dashboard/inventory">
+  <div class="inventory-page">
+    <header class="page-header">
+      <h1 class="page-title">Inventario</h1>
+    </header>
+
+    <InventoryStats client:load items={inventory.items} lastUpdated={inventory.lastUpdated} />
+
+    <div class="inventory-grid">
+      <div class="grid-main">
+        <StockAlerts client:load items={inventory.items} />
+      </div>
+      <div class="grid-side">
+        <PredictionCard client:load items={inventory.items} />
+      </div>
+    </div>
+
+    <InventoryManager client:load />
+  </div>
+</BaseLayout>
+
+<script>
+  import { refreshInventoryFromApi } from '../../../stores/inventory.svelte';
+  refreshInventoryFromApi();
+</script>
+
+<style>
+  .inventory-page {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--swal-text, #e2e8f0);
+    margin: 0;
+  }
+
+  .inventory-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1rem;
+  }
+
+  @media (max-width: 900px) {
+    .inventory-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

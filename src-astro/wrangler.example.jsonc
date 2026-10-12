@@ -1,0 +1,37 @@
+{
+  // Plantilla de wrangler para desplegar TU instancia de Fize en Cloudflare Workers.
+  //
+  //   cp wrangler.example.jsonc wrangler.jsonc   # wrangler.jsonc esta en .gitignore: nunca se versiona
+  //
+  // Luego crea los recursos en tu cuenta y pega sus ids:
+  //   npx wrangler d1 create <tu-db>                 -> database_id
+  //   npx wrangler kv namespace create SESSION       -> id
+  //   npx wrangler kv namespace create SWAL_KV       -> id
+  //   npx wrangler r2 bucket create <tu-bucket>      -> bucket_name
+  //   npx wrangler d1 migrations apply SWAL_D1 --remote
+  //
+  // No necesitas nada de esto para usar Fize: el modo local (/local/) guarda todo en el navegador y
+  // funciona sin internet. Sin wrangler.jsonc, `pnpm build` / `pnpm dev` usan wrangler.e2e.jsonc
+  // (solo bindings locales de miniflare).
+  //
+  // Los nombres de binding (SESSION, SWAL_KV, SWAL_D1, SWAL_R2, AI) los usa el codigo: no los cambies.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "<your-worker-name>",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "kv_namespaces": [
+    { "binding": "SESSION", "id": "<your-session-kv-namespace-id>" },
+    { "binding": "SWAL_KV", "id": "<your-swal-kv-namespace-id>" }
+  ],
+  "d1_databases": [
+    { "binding": "SWAL_D1", "database_name": "<your-d1-database-name>", "database_id": "<your-d1-database-id>" }
+  ],
+  "r2_buckets": [
+    { "binding": "SWAL_R2", "bucket_name": "<your-r2-bucket-name>" }
+  ],
+
+  // Workers AI (opcional). Es un binding "remoto": no tiene simulador local y `wrangler dev` / el build
+  // piden CLOUDFLARE_API_TOKEN. Quitalo si no usas inferencia en la nube.
+  "ai": { "binding": "AI" }
+}

@@ -1,0 +1,73 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import RestaurantForm from '../../../components/settings/RestaurantForm.svelte';
+import { Badge } from '@swal/ui';
+---
+
+<BaseLayout showNav title="Configuración — Fi'ze Dashboard" currentPath="/dashboard/settings">
+  <main class="settings-page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/dashboard">← Dashboard</a>
+      <span>/</span>
+      <span>Configuración</span>
+    </nav>
+
+    <header class="settings-header">
+      <div>
+        <h1>Configuración del Restaurante</h1>
+        <p class="sub">Administra el perfil de tu local y consulta los detalles de tu plan y suscripción.</p>
+      </div>
+      <Badge variant="info">WAVE-H4.09</Badge>
+    </header>
+
+    <RestaurantForm client:load />
+  </main>
+</BaseLayout>
+
+<style>
+  .settings-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--swal-text-muted, #64748b);
+    font-size: 0.85rem;
+  }
+
+  .crumbs a {
+    color: var(--swal-accent-cyan, #22d3ee);
+    text-decoration: none;
+  }
+
+  .crumbs a:hover {
+    text-decoration: underline;
+  }
+
+  .settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .settings-header h1 {
+    margin: 0;
+    color: var(--swal-text, #f8fafc);
+    font-size: 1.6rem;
+  }
+
+  .sub {
+    color: var(--swal-text-secondary, #94a3b8);
+    margin: 0.25rem 0 0;
+    font-size: 0.95rem;
+  }
+</style>

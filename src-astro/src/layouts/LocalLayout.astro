@@ -1,0 +1,149 @@
+---
+// LocalLayout.astro — layout del modo local (docs/producto/NODO-LOCAL.md §2.1).
+//
+// Las paginas /local/* son estaticas (prerender): el Worker las sirve como assets sin middleware ni sesion,
+// y el service worker las precachea para abrirlas sin red. Este layout NO enlaza a /login ni a /dashboard:
+// en modo local no hay cuenta y el panel de la nube no existe para este equipo.
+import { Toaster } from "@swal/ui";
+import { AppShell } from "@swal/ui";
+import { themeBootScript } from "@swal/ui/theme-boot";
+import { NET_BANNER_SCRIPT } from "../lib/inlineScripts";
+
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = "Fize en este equipo: tu carta y tu local sin cuenta y sin internet." } = Astro.props;
+const currentPath = Astro.url.pathname;
+
+const NAV = [
+  { href: "/local/carta/", label: "Carta", icon: "utensils" },
+  { href: "/local/historias/", label: "Historias", icon: "heart" },
+  { href: "/local/ajustes/", label: "Mi local", icon: "home" },
+  { href: "/local/respaldo/", label: "Copia de seguridad", icon: "device" },
+  { href: "/local/publicar/", label: "Publicar", icon: "qr" },
+];
+---
+
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#121211" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf9f5" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <!-- Manifiesto propio: instalada desde aqui, la app abre en /local/ y no en la landing. -->
+    <link rel="manifest" href="/local/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Fize" />
+    <title>{title}</title>
+    <script src="/registerSW.js" defer is:inline></script>
+    <script is:inline set:html={themeBootScript()}></script>
+    <style is:global>
+      @import "@swal/ui/tokens.css";
+    </style>
+  </head>
+  <body>
+    <!-- En modo local quedarse sin internet no es un problema: se avisa, sin alarmar. -->
+    <p class="net-banner" id="net-banner" role="status" hidden data-no-print>
+      Sin internet. Todo sigue funcionando en este equipo; solo publicar la carta necesita conexión.
+    </p>
+    <script is:inline set:html={NET_BANNER_SCRIPT}></script>
+    <AppShell items={NAV} {currentPath} menuLabel="Menú" navLabel="Fize en este equipo" style="background: transparent" client:load>
+      <slot />
+    </AppShell>
+    <Toaster client:load position="bottom-right" />
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --font-sans: var(--swal-font, ui-sans-serif, system-ui, sans-serif);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--swal-bg, #121211);
+    background-image: var(--swal-mesh);
+    background-attachment: fixed;
+    color: var(--swal-text, #f5f5f4);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+  }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  html { scroll-padding-block: 5rem; }
+  :where(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--swal-accent, #f5f5f4);
+    outline-offset: 2px;
+  }
+  .net-banner {
+    position: sticky; top: 0; z-index: 50;
+    padding: 0.5rem 1rem; text-align: center; font-size: 0.875rem;
+    background: var(--swal-warning-muted, #3b2f12); color: var(--swal-text, #f5f5f4);
+    border-bottom: 1px solid var(--swal-border, rgba(255, 255, 255, 0.06));
+  }
+  .net-banner[hidden] { display: none; }
+  /* Mientras corre el onboarding no hay panel al que ir: se oculta el menu. */
+  html[data-onboarding] .sidebar { display: none; }
+
+  /* Piezas compartidas de las pantallas locales (prefijo l-). Tokens del tema Bone: claro y oscuro. */
+  .l-page { width: 100%; max-width: 46rem; margin: 0 auto; padding: 1rem 0 3rem; display: flex; flex-direction: column; gap: 1rem; }
+  /* Un hijo ancho (tabla de categorias) no debe ensanchar la columna en el celular. */
+  .l-page > * { min-width: 0; }
+  .l-title { font-size: clamp(1.375rem, 5vw, 1.75rem); line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; color: var(--swal-text); text-wrap: balance; }
+  .l-lead { font-size: 1rem; line-height: 1.55; color: var(--swal-text-secondary); }
+  .l-card {
+    display: flex; flex-direction: column; gap: 0.875rem;
+    padding: 1.125rem; border-radius: var(--swal-radius-lg, 1rem);
+    background: var(--swal-surface); border: 1px solid var(--swal-border);
+    box-shadow: var(--swal-shadow-sm);
+  }
+  .l-card h2 { font-size: 1.0625rem; font-weight: 650; color: var(--swal-text); }
+  .l-card p, .l-card li { font-size: 0.9375rem; line-height: 1.55; color: var(--swal-text-secondary); }
+  .l-card strong { color: var(--swal-text); }
+  .l-field { display: flex; flex-direction: column; gap: 0.375rem; }
+  .l-field label, .l-label { font-size: 0.875rem; font-weight: 600; color: var(--swal-text); }
+  .l-input {
+    width: 100%; min-height: 2.75rem; padding: 0.625rem 0.75rem; font: inherit; font-size: 1rem;
+    color: var(--swal-text); background: var(--swal-bg-elevated, var(--swal-bg)); border: 1px solid var(--swal-border-strong, var(--swal-border));
+    border-radius: var(--swal-radius, 0.625rem);
+  }
+  .l-input[aria-invalid="true"] { border-color: var(--swal-danger); }
+  .l-help { font-size: 0.8125rem; line-height: 1.45; color: var(--swal-text-muted); }
+  .l-error { font-size: 0.8125rem; color: var(--swal-danger); }
+  .l-row { display: flex; flex-wrap: wrap; gap: 0.625rem; align-items: center; }
+  .l-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem;
+    min-height: 2.75rem; padding: 0.625rem 1.125rem; border-radius: var(--swal-radius, 0.75rem);
+    font: inherit; font-size: 0.9375rem; font-weight: 600; cursor: pointer; text-decoration: none;
+    background: var(--swal-surface); color: var(--swal-text); border: 1px solid var(--swal-border-strong, var(--swal-border));
+    transition: background 150ms;
+  }
+  .l-btn:hover { background: var(--swal-surface-hover); }
+  .l-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .l-btn-primary { background: var(--swal-accent); color: var(--swal-accent-contrast); border-color: transparent; }
+  .l-btn-primary:hover { background: var(--swal-accent-hover); }
+  .l-btn-link { background: transparent; border-color: transparent; text-decoration: underline; padding-inline: 0.25rem; }
+  .l-alert { padding: 0.75rem 0.875rem; border-radius: var(--swal-radius, 0.625rem); font-size: 0.9rem; line-height: 1.5; border: 1px solid var(--swal-border); color: var(--swal-text); }
+  .l-alert-error { background: var(--swal-danger-muted); border-color: var(--swal-danger); }
+  .l-alert-ok { background: var(--swal-success-muted); border-color: var(--swal-success); }
+  .l-alert-warn { background: var(--swal-warning-muted); border-color: var(--swal-warning); }
+  /* Enlaces dentro del texto: color del tema (sin esto salian en el azul/morado del navegador). */
+  .l-page a:not(.l-btn):not(.l-card), .l-card a:not(.l-btn) { color: var(--swal-text); text-decoration: underline; text-underline-offset: 2px; }
+  .l-badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: var(--swal-surface-active, var(--swal-surface)); color: var(--swal-text-secondary); border: 1px solid var(--swal-border); }
+  .l-mono { font-family: var(--swal-font-mono, ui-monospace, monospace); }
+  @media (max-width: 480px) {
+    .l-row.l-stack-mobile { flex-direction: column; align-items: stretch; }
+    .l-row.l-stack-mobile .l-btn { width: 100%; }
+  }
+  /* Imprimir (codigo de recuperacion, QR de mesas): sin menu ni fondos. */
+  @media print {
+    body { background: #fff; color: #000; }
+    .sidebar, .swal-mobile-nav, [data-no-print] { display: none !important; }
+  }
+</style>

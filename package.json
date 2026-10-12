@@ -1,0 +1,22 @@
+{
+  "name": "hosteler-ia-monorepo",
+  "version": "0.2.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "description": "Fize (Hosteler-IA) — local-first restaurant app: Astro + Svelte 5, offline in the browser, optional Cloudflare Workers backend (src-astro/)",
+  "scripts": {
+    "dev": "cd src-astro && pnpm run dev",
+    "build": "cd src-astro && pnpm run build",
+    "preview": "cd src-astro && pnpm run preview",
+    "check": "cd src-astro && pnpm run check",
+    "test": "cd src-astro && pnpm vitest run",
+    "test:ci": "cd src-astro && pnpm vitest run",
+    "lint": "cd src-astro && pnpm run check",
+    "check:public-tree": "bash scripts/check-public-tree.sh",
+    "public-tree": "bash scripts/public-tree.sh"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

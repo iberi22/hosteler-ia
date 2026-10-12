@@ -1,0 +1,204 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { OFFLINE_RETRY_SCRIPT } from '../lib/inlineScripts';
+import { CLIENT } from '../config/client';
+
+/**
+ * Pagina /offline: destino del service worker cuando una navegacion falla.
+ *
+ * Por que `prerender = true` (y por que no es cosmetico):
+ *
+ * El proyecto usa `output: 'server'`, asi que por defecto ninguna pagina existe
+ * como HTML en `dist/client/`. Y `navigateFallback` de workbox NO es una URL que
+ * el worker "pida" a la red cuando falla la navegacion: se compila a
+ * `createHandlerBoundToURL(navigateFallback)`, que busca esa ruta en el
+ * MANIFIESTO DE PRECACHE. Sin `/offline` en el precache, `generateSW` aborta con
+ * `non-precached-url` y el fallback no llega a existir: la PWA instala bien y a
+ * pesar de eso no tiene donde caer.
+ *
+ * Al prerenderizar, Astro emite `dist/client/offline/index.html`, entra en los
+ * globPatterns de gen-sw.mjs y el precache la contiene. `navigateFallback`
+ * apunta a `/offline/index.html` porque la resolucion de workbox prueba la URL
+ * tal cual y la URL con `.html` anadido (directoryIndex solo interviene en rutas
+ * que YA terminan en `/`); el HTML servido es el mismo.
+ *
+ * No lee sesion, ni D1, ni el storage adapter, asi que prerenderizar no filtra
+ * nada ni depende de ningun binding de Cloudflare.
+ */
+export const prerender = true;
+
+// El slug de la carta (ruta /{slug}/menu, ver publicMenuBySlug.ts) es configurable por instancia (PUBLIC_CARTA_SLUG); por
+// defecto el de la clienta de este despliegue (src/config/client.ts). Se resuelve
+// en build y no en cliente: el HTML prerenderizado ya lleva la ruta definitiva escrita.
+const env = import.meta.env as unknown as Record<string, string | undefined>;
+const cartaSlug = (env.PUBLIC_CARTA_SLUG || CLIENT.slug).trim() || CLIENT.slug;
+const cartaHref = `/${encodeURIComponent(cartaSlug)}/menu`;
+---
+
+<BaseLayout title="Sin conexión — Fi'ze" currentPath="/offline" showNav={false}>
+  <section class="offline" aria-labelledby="offline-titulo">
+    <p class="marca">Fi'ze</p>
+    <h1 id="offline-titulo">No hay conexión a internet</h1>
+
+    <p class="lead">
+      Esta pantalla necesita la red para cargar el resto de la aplicación. El
+      dispositivo está ahora mismo sin cobertura, así que no es un fallo de
+      Fi'ze: los datos del restaurante siguen a salvo y esta pantalla desaparece
+      en cuanto vuelve la conexión.
+    </p>
+
+    <ul class="estado">
+      <li>
+        <strong>Tus pedidos no se pierden.</strong>
+        Los pedidos enviados sin conexión quedan en cola en el dispositivo y se
+        envían solos en cuanto vuelva la red.
+      </li>
+      <li>
+        <strong>La carta puede seguir abierta.</strong>
+        Si ya la habías consultado, el navegador puede volver a mostrarla desde
+        la caché sin pedirla al servidor.
+      </li>
+    </ul>
+
+    <div class="acciones">
+      <button type="button" id="reintentar" class="btn btn-primary">Reintentar</button>
+      <a href={cartaHref} class="btn btn-secundario">Ver la carta</a>
+    </div>
+
+    <p class="nota" id="estado-red" role="status" aria-live="polite">Comprobando la conexión…</p>
+  </section>
+</BaseLayout>
+
+<script is:inline set:html={OFFLINE_RETRY_SCRIPT}></script>
+
+<style>
+  /* Sin barra lateral ni navegacion: esta pantalla es un tope, no un sitio por
+     el que haya que pasear. BaseLayout ya aporta el script de prepaint del
+     tema, los tokens Bone y el foco visible. */
+  .offline {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+    width: 100%;
+    max-width: 34rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 6vw, 3.5rem) 0;
+  }
+
+  .marca {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--swal-text-muted, #a8a29e);
+  }
+
+  /* clamp() y no un tamano fijo: a 390x844 un titular de 2rem se partia en
+     tres lineas y empujaba los botones fuera de la pantalla. */
+  h1 {
+    font-size: clamp(1.5rem, 5.5vw, 2.125rem);
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--swal-text, #f5f5f4);
+    text-wrap: balance;
+  }
+
+  .lead {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--swal-text-secondary, #a8a29e);
+  }
+
+  .estado {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    margin: 0.25rem 0 0.5rem;
+    padding: 1rem 1.125rem;
+    list-style: none;
+    background: var(--swal-surface, rgba(28, 25, 23, 0.85));
+    border: 1px solid var(--swal-border, rgba(255, 255, 255, 0.06));
+    border-radius: 1rem;
+    box-shadow: var(--swal-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.32));
+  }
+
+  .estado li {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--swal-text-secondary, #a8a29e);
+  }
+
+  /* `strong` con --swal-text y no con --swal-accent: el acento Bone es marfil
+     en oscuro y grafito en claro, y sobre la tarjeta translucida en claro el
+     grafito no llega a 4.5:1. El token de texto si. */
+  .estado strong {
+    display: block;
+    font-weight: 600;
+    color: var(--swal-text, #f5f5f4);
+  }
+
+  .acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+    width: 100%;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem; /* objetivo tactil: 44px */
+    padding: 0.625rem 1.125rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--swal-border, rgba(255, 255, 255, 0.06));
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 150ms;
+  }
+
+  /* Primario: relleno con el acento del tema (marfil en oscuro, grafito en
+     claro) y texto --swal-accent-contrast, el par invertido que el tema
+     garantiza. El contraste sale del token, no de un color fijado aqui. */
+  .btn-primary {
+    background: var(--swal-accent, #f5f5f4);
+    color: var(--swal-accent-contrast, #1c1917);
+    border-color: transparent;
+  }
+
+  .btn-primary:hover {
+    background: var(--swal-accent-hover, #e7e5e4);
+  }
+
+  .btn-secundario {
+    background: var(--swal-surface, rgba(28, 25, 23, 0.85));
+    color: var(--swal-text, #f5f5f4);
+    /* Igual que en BaseLayout: `a:-webkit-any-link { color: -webkit-link }` de la
+       user-agent sheet gana a un selector de clase (0,1,0), asi que sin esto el
+       enlace sale azul del navegador por mucho --swal-text que se ponga aqui. */
+    text-decoration: none;
+  }
+
+  .btn-secundario:hover {
+    background: var(--swal-surface-hover, rgba(41, 37, 36, 0.88));
+  }
+
+  .nota {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--swal-text-muted, #a8a29e);
+  }
+
+  /* 390x844: dos botones a ancho completo se leen mejor que dos botones
+     estrechos que se parten a la mitad. */
+  @media (max-width: 480px) {
+    .acciones { flex-direction: column; }
+    .acciones .btn { width: 100%; }
+  }
+</style>

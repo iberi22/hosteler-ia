@@ -1,0 +1,18 @@
+{
+  "name": "Fize en este equipo",
+  "short_name": "Fize",
+  "description": "Tu carta y tu local en este equipo, sin cuenta y sin internet.",
+  "id": "/local/",
+  "start_url": "/local/",
+  "scope": "/local/",
+  "display": "standalone",
+  "background_color": "#FAF9F5",
+  "theme_color": "#1C1917",
+  "lang": "es-CO",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

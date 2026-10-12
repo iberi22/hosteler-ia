@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fi'ze">
+  <!--
+    Alineado con el tema Bone del core @swal/ui: carbon mineral #121211 y
+    marfil #f5f5f4. Antes usaba cyan Edge-Hive y despues un grafito #17181a
+    que ya no es el fondo del tema; con la paleta Warm Minimalist el fondo es
+    carbon, mas oscuro y mas calido.
+
+    Sin degradado: el tema es de un solo tono. La jerarquia se construye con
+    opacidad del mismo marfil, no con un segundo color.
+  -->
+  <rect width="64" height="64" rx="14" fill="#121211"/>
+  <circle cx="32" cy="32" r="20" fill="none" stroke="#f5f5f4" stroke-width="4" opacity="0.9"/>
+  <path d="M18 32h28" stroke="#f5f5f4" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 18v28" stroke="#f5f5f4" stroke-width="2" stroke-linecap="round" opacity="0.45"/>
+  <circle cx="32" cy="32" r="6" fill="#f5f5f4"/>
+</svg>

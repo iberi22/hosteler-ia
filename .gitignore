@@ -1,0 +1,107 @@
+# Dependencies
+node_modules
+/node_modules
+/src-astro/node_modules
+/private/saas-backend/node_modules
+/private/saas-client/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing
+/coverage
+/src-astro/test-results
+/src-astro/playwright-report
+/src-astro/.wrangler/
+
+# Production builds
+/build
+/dist
+
+# Misc
+.DS_Store
+*.pem
+*.log
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Astro / Vite
+/src-astro/dist
+/src-astro/.astro
+/.astro
+.vite/
+
+# Environment
+.env*
+.env*.local
+/private/saas-backend/wrangler.toml
+
+# Editor / Agent state
+.vscode
+.idea
+*.swp
+*.swo
+
+# pnpm
+.pnpm-store/
+
+# npm (repo is pnpm-only; hermes verify may run npm install)
+package-lock.json
+**/package-lock.json
+
+# Artefactos locales de Xavier y monitorizacion (nunca versionar)
+*.db
+*.db-shm
+*.db-wal
+.xavier/
+data/
+.hermes/monitor/
+.hermes/wave-bodies/
+docs/monitor/
+
+# --- P0 demo readiness: artefactos que se seguian versionando sin valor ---
+# legacy/ y docs/legacy/: la app Next.js anterior. No es paquete del workspace
+# (pnpm-workspace.yaml solo lista src-astro), no tiene
+# package.json ni tsconfig, y ningun build/CI la referencia: 234 archivos y
+# 1.8 MB (incluido docs/legacy/firebase-debug.log, 1.0 MB) que nadie ejecuta.
+# Untrackeado, no borrado: sigue en disco y en el historial de git.
+legacy/
+docs/legacy/
+
+# .hermes/ entero: briefs internos de delegacion de agentes (57 archivos, 356 KB)
+# en un repo que ve el cliente. .atl/: cache del skill-registry con rutas absolutas
+# de /home/belal/.hermes/skills —Paths de esta maquina, sin uso fuera de ella.
+.hermes/
+.atl/
+
+# .vscode/ ya estaba ignorado en la linea 46; vercel.json se declaraba como
+# "pendiente" en un plan interno (F5_VERCEL_SWITCH_PREP), pero el producto despliega
+# a Cloudflare Workers con wrangler deploy (ver private/infra/workflows/deploy-astro.yml). El archivo ya apuntaba a Astro (src-astro/dist), o
+# sea que la migracion F5 quedo a medias en su doc, no en el archivo.
+vercel.json
+
+# --- Split publico/privado (refactor/public-split) ---
+# Config real de wrangler: ids de la cuenta de Cloudflare (D1, KV). Se copia en el deploy desde el repo
+# privado de infraestructura (private/infra/scripts/overlay-cloud.sh). Plantilla: src-astro/wrangler.example.jsonc.
+/src-astro/wrangler.toml
+/src-astro/wrangler.jsonc
+/src-astro/wrangler.json
+# Estado local de wrangler/miniflare: nunca se versiona.
+.wrangler/
+# Rutas que en el historial viejo contenian secretos. No deben volver a existir en el arbol.
+.gemini/
+.kiro/
+.rovodev/
+src/lib/firebase-config.ts
+/DEPLOYMENT.md
+/PLANNING.md
+docs/legacy/PLANNING.md
+
+# Private overlay (lives in the private infra repo)
+private/

@@ -1,0 +1,101 @@
+{
+  "landing": {
+    "title": "Fi'ze - Smart Restaurant Management Platform",
+    "description": "QR digital menus, autonomous ordering, inventory management and restaurant finances.",
+    "header": {
+      "subtitle": "Smart Restaurant Management",
+      "version": "v1.0 Ready"
+    },
+    "trustBadge": "Trusted by 500+ restaurants",
+    "headline": "Smart Restaurant",
+    "headlineHighlight": "Management",
+    "subheadline": "AI-powered platform for QR menus, orders, payments, and analytics.",
+    "freeForever": "Free forever",
+    "proPlans": "Pro plans to scale",
+    "cta": "Start Free Today",
+    "pricing": "View Pricing",
+    "features": {
+      "qr": {
+        "title": "QR Menu & Orders",
+        "description": "Contactless dining experience"
+      },
+      "analytics": {
+        "title": "AI Analytics",
+        "description": "Demand prediction & insights"
+      },
+      "payments": {
+        "title": "Secure Payments",
+        "description": "Stripe & GDPR compliance"
+      }
+    },
+    "socialProof": {
+      "noFees": "No fees",
+      "gdpr": "GDPR compliant",
+      "support": "24/7 support"
+    },
+    "footer": {
+      "copyright": "© 2025 Built for modern restaurants"
+    }
+  },
+  "pricing": {
+    "signIn": "Sign In",
+    "badge": "Simple, transparent pricing",
+    "title": "Choose Your Plan",
+    "subtitle": "The full software is free. The only optional subscription is cloud storage of your data, encrypted and protected.",
+    "featuresSection": {
+      "title": "Everything you need to run a modern restaurant",
+      "fast": {
+        "title": "Lightning Fast",
+        "description": "Orders processed in seconds with our optimized system"
+      },
+      "secure": {
+        "title": "Secure & Compliant",
+        "description": "GDPR compliant with enterprise-grade security"
+      },
+      "support": {
+        "title": "24/7 Support",
+        "description": "Round-the-clock assistance when you need it"
+      }
+    },
+    "ctaSection": {
+      "title": "Ready to transform your restaurant?",
+      "subtitle": "Join hundreds of restaurants already using Fi'ze",
+      "cta1": "Start Free Trial",
+      "cta2": "Book a Demo"
+    },
+    "storage": {
+      "mostPopular": "Only plan",
+      "name": "Cloud storage",
+      "priceNote": "Optional subscription — cloud data only",
+      "description": "Your data in the cloud, encrypted and protected. The full software is free.",
+      "feature1": "End-to-end encryption of your data",
+      "feature2": "Automatic, protected backups",
+      "feature3": "Secure sync across your devices",
+      "feature4": "Your data is yours: export anytime",
+      "feature5": "No ads and no data selling",
+      "cta": "Go to dashboard"
+    }
+  },
+  "common": {
+    "language": "Language",
+    "spanish": "Spanish",
+    "english": "English"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in to Fi’ze",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "noAccount": "No account yet?"
+    },
+    "register": {
+      "title": "Create your Fi’ze account",
+      "name": "Name",
+      "email": "Email",
+      "password": "Password (min. 8)",
+      "submit": "Sign up",
+      "hasAccount": "Already have an account?"
+    }
+  }
+}

@@ -1,0 +1,425 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { Card, Badge } from '@swal/ui';
+import { createStorageAdapter } from '../../../lib/storageAdapter';
+import { domainConfig } from '../../../lib/domain.config';
+
+// Server-side data fetching for SSR
+const instanceId = Astro.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+const origin = Astro.url.origin;
+
+let menuItems: Array<{ id: string; name: string; price: number; categoryId?: string; description?: string }> = [];
+let categoriesMap: Record<string, string> = {};
+let tables: Array<{ id: string; number: number; capacity: number; qrCode: string }> = [];
+let fetchError: string | null = null;
+
+try {
+  const adapter = createStorageAdapter(Astro.locals);
+
+  // Fetch menu items (equivalent to GET /api/menu-items)
+  const menuList = await adapter.list('menuItem', instanceId);
+  menuItems = menuList
+    .filter((item) => !(item as Record<string, unknown>).deleted_at)
+    .map((item) => {
+      const r = item as Record<string, unknown>;
+      return {
+        id: r.id as string,
+        name: r.name as string,
+        price: Number(r.price),
+        categoryId: (r.categoryId as string) || 'Sin Categoría',
+        description: (r.description as string) || undefined,
+      };
+    });
+
+  // Fetch categories for label mapping
+  const catList = await adapter.list('category', instanceId);
+  for (const cat of catList) {
+    const r = cat as Record<string, unknown>;
+    if (!r.deleted_at && r.id && r.name) {
+      categoriesMap[r.id as string] = r.name as string;
+    }
+  }
+
+  // Fetch tables (equivalent to GET /api/tables)
+  const tableList = await adapter.list('table', instanceId);
+  tables = tableList
+    .filter((item) => !(item as Record<string, unknown>).deleted_at)
+    .map((item) => {
+      const r = item as Record<string, unknown>;
+      return {
+        id: r.id as string,
+        number: Number(r.number),
+        capacity: Number(r.capacity),
+        qrCode: (r.qrCode as string) || '',
+      };
+    })
+    .sort((a, b) => a.number - b.number);
+} catch (err) {
+  fetchError = (err as Error).message || 'Error al cargar los datos de /api/menu-items o /api/tables';
+}
+
+// Group menu items by category name
+const groupedMenu: Record<string, typeof menuItems> = {};
+for (const item of menuItems) {
+  const catName = (item.categoryId && categoriesMap[item.categoryId]) || item.categoryId || 'General';
+  if (!groupedMenu[catName]) {
+    groupedMenu[catName] = [];
+  }
+  groupedMenu[catName].push(item);
+}
+---
+
+<BaseLayout showNav title="Portal Cliente — Fi'ze Staff" currentPath="/dashboard/client">
+  <main class="client-portal">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/dashboard/orders">← Dashboard</a>
+      <span>/</span>
+      <span>Portal Cliente</span>
+    </nav>
+
+    <header class="portal-header">
+      <div>
+        <h1>Vista Cliente & Códigos QR</h1>
+        <p class="sub">
+          Vista de personal sobre el menú público y enlaces QR por mesa para imprimir o compartir.
+        </p>
+      </div>
+      <Badge variant="info">Staff Only</Badge>
+    </header>
+
+    {fetchError && (
+      <Card variant="surface" padding="md">
+        <div class="error-banner" role="alert">
+          <p><strong>Error de carga:</strong> {fetchError}</p>
+          <p class="hint">No se pudieron consultar los endpoints <code>/api/menu-items</code> o <code>/api/tables</code>.</p>
+        </div>
+      </Card>
+    )}
+
+    <!-- Sección 1: Enlaces QR por Mesa -->
+    <section class="section">
+      <div class="section-title">
+        <h2>Enlaces QR y Acceso por Mesa</h2>
+        <span class="count-badge">{tables.length} mesas activas</span>
+      </div>
+      <p class="section-desc">
+        Enlaces públicos dinámicos generados desde el origen actual. Haz clic en el enlace para previsualizar o copia la URL para imprimir los códigos QR.
+      </p>
+
+      {tables.length === 0 ? (
+        <Card variant="surface" padding="md">
+          <p class="empty-state">No se encontraron mesas registradas. Consulta <code>/api/tables</code> para registrar nuevas mesas.</p>
+        </Card>
+      ) : (
+        <Card variant="surface" padding="none">
+          <div class="table-responsive">
+            <table class="qr-table">
+              <thead>
+                <tr>
+                  <th>Mesa</th>
+                  <th>Capacidad</th>
+                  <th>Código QR</th>
+                  <th>Enlace Público</th>
+                  <th class="actions-col">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tables.map((tbl) => {
+                  const tableUrl = `${origin}/table/${tbl.qrCode}`;
+                  return (
+                    <tr>
+                      <td class="table-num">Mesa {tbl.number}</td>
+                      <td>{tbl.capacity} personas</td>
+                      <td><code class="qr-code-text">{tbl.qrCode.slice(0, 8)}...</code></td>
+                      <td>
+                        <a href={`/table/${tbl.qrCode}`} target="_blank" rel="noopener noreferrer" class="public-link">
+                          {tableUrl}
+                        </a>
+                      </td>
+                      <td class="actions-col">
+                        <button
+                          type="button"
+                          class="copy-btn"
+                          data-copy-url={tableUrl}
+                          aria-label={`Copiar enlace de Mesa ${tbl.number}`}
+                        >
+                          Copiar Enlace
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </section>
+
+    <!-- Sección 2: Previsualización del Menú Público -->
+    <section class="section">
+      <div class="section-title">
+        <h2>Previsualización del Menú Público</h2>
+        <span class="count-badge">{menuItems.length} platos/bebidas</span>
+      </div>
+      <p class="section-desc">
+        Vista de lectura del catálogo público actual obtenido desde <code>/api/menu-items</code>.
+      </p>
+
+      {menuItems.length === 0 ? (
+        <Card variant="surface" padding="md">
+          <p class="empty-state">No hay elementos de menú disponibles actualmente.</p>
+        </Card>
+      ) : (
+        <div class="menu-categories">
+          {Object.entries(groupedMenu).map(([categoryName, items]) => (
+            <div class="category-block">
+              <h3 class="category-title">{categoryName}</h3>
+              <div class="items-grid">
+                {items.map((item) => (
+                  <div class="menu-card">
+                    <div class="menu-card-header">
+                      <span class="item-name">{item.name}</span>
+                      <span class="item-price">${item.price.toFixed(2)}</span>
+                    </div>
+                    {item.description && <p class="item-desc">{item.description}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  </main>
+</BaseLayout>
+
+<script>
+  // Copy to clipboard with fallback for table QR URLs
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const btn = target?.closest('[data-copy-url]') as HTMLButtonElement | null;
+    if (!btn) return;
+
+    const url = btn.getAttribute('data-copy-url');
+    if (!url) return;
+
+    const originalText = btn.textContent;
+
+    const showFeedback = (msg: string) => {
+      btn.textContent = msg;
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.classList.remove('copied');
+      }, 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => showFeedback('¡Copiado!'))
+        .catch(() => fallbackCopy(url, showFeedback));
+    } else {
+      fallbackCopy(url, showFeedback);
+    }
+  });
+
+  function fallbackCopy(text: string, cb: (msg: string) => void) {
+    try {
+      // Sin Clipboard API (contexto no seguro): mostrar el enlace para copia manual.
+      // Evita document.execCommand (API deprecada).
+      const manual = window.prompt('Copia el enlace:', text);
+      cb(manual === null ? 'Copiado cancelado' : '¡Copiado!');
+    } catch {
+      cb('Error al copiar');
+    }
+  }
+</script>
+
+<style>
+  .client-portal {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--swal-text-muted, #888);
+    font-size: 0.85rem;
+  }
+  .crumbs a {
+    color: var(--swal-accent-cyan, #00d2ff);
+    text-decoration: none;
+  }
+  .crumbs a:hover {
+    text-decoration: underline;
+  }
+  .portal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .portal-header h1 {
+    margin: 0;
+    color: var(--swal-text, #fff);
+    font-size: 1.6rem;
+  }
+  .sub {
+    color: var(--swal-text-secondary, #aaa);
+    margin: 0.25rem 0 0;
+    font-size: 0.95rem;
+  }
+  .error-banner {
+    color: var(--swal-danger);
+  }
+  .error-banner p {
+    margin: 0 0 0.25rem;
+  }
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .section-title h2 {
+    margin: 0;
+    color: var(--swal-text, #fff);
+    font-size: 1.25rem;
+  }
+  .count-badge {
+    background: var(--swal-bg-elevated, #222);
+    border: 1px solid var(--swal-border, #444);
+    color: var(--swal-accent-cyan, #00d2ff);
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+  }
+  .section-desc {
+    margin: 0;
+    color: var(--swal-text-secondary, #aaa);
+    font-size: 0.9rem;
+  }
+  .empty-state {
+    color: var(--swal-text-muted, #888);
+    margin: 0;
+  }
+  .table-responsive {
+    overflow-x: auto;
+  }
+  .qr-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.9rem;
+  }
+  .qr-table th {
+    background: var(--swal-bg-elevated, #1a1a1a);
+    color: var(--swal-text-secondary, #aaa);
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--swal-border, #333);
+  }
+  .qr-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--swal-border, #222);
+    color: var(--swal-text, #fff);
+  }
+  .table-num {
+    font-weight: 700;
+    color: var(--swal-accent-cyan, #00d2ff);
+  }
+  .qr-code-text {
+    font-family: var(--swal-font-mono, monospace);
+    background: var(--swal-bg-elevated, #222);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+  }
+  .public-link {
+    color: var(--swal-accent-cyan, #00d2ff);
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .public-link:hover {
+    text-decoration: underline;
+  }
+  .actions-col {
+    text-align: right;
+  }
+  .copy-btn {
+    background: var(--swal-bg-elevated, #222);
+    color: var(--swal-text, #fff);
+    border: 1px solid var(--swal-border, #444);
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .copy-btn:hover {
+    background: var(--swal-border, #444);
+    color: var(--swal-accent-cyan, #00d2ff);
+  }
+  .copy-btn.copied {
+    background: #107c41;
+    color: #ffffff;
+    border-color: #107c41;
+  }
+  .menu-categories {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .category-title {
+    margin: 0 0 0.75rem;
+    color: var(--swal-accent-cyan, #00d2ff);
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--swal-border, #333);
+    padding-bottom: 0.35rem;
+  }
+  .items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .menu-card {
+    background: var(--swal-bg-elevated, #18181b);
+    border: 1px solid var(--swal-border, #27272a);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .menu-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+  .item-name {
+    font-weight: 600;
+    color: var(--swal-text, #fff);
+  }
+  .item-price {
+    font-weight: 700;
+    color: var(--swal-accent-cyan, #00d2ff);
+    font-size: 0.95rem;
+  }
+  .item-desc {
+    margin: 0;
+    color: var(--swal-text-secondary, #aaa);
+    font-size: 0.825rem;
+  }
+</style>

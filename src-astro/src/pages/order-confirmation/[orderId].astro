@@ -1,0 +1,57 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import OrderStatus from '../../components/client/OrderStatus.svelte';
+import { createStorageAdapter } from '../../lib/storageAdapter';
+import { domainConfig } from '../../lib/domain.config';
+
+const { orderId } = Astro.params;
+const instanceId = Astro.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+
+if (!orderId) {
+  return Astro.redirect('/');
+}
+
+const adapter = createStorageAdapter(Astro.locals);
+const order = (await adapter.get('order', orderId, instanceId)) as Record<string, unknown> | null;
+
+if (!order || order.deleted_at) {
+  return new Response('Pedido no encontrado', { status: 404 });
+}
+
+const rawItems = Array.isArray(order.items) ? (order.items as Record<string, unknown>[]) : [];
+const lines: Array<{ name: string; qty: number }> = [];
+for (const it of rawItems) {
+  const menuItem = (await adapter.get('menuItem', String(it.menuItemId ?? ''), instanceId)) as Record<
+    string,
+    unknown
+  > | null;
+  lines.push({
+    name: menuItem && !menuItem.deleted_at ? String(menuItem.name ?? it.menuItemId) : String(it.menuItemId ?? ''),
+    qty: Number(it.qty ?? it.quantity ?? 1),
+  });
+}
+
+// Numero de mesa (no el id interno) y enlace de vuelta a la carta del local.
+const table = order.tableId
+  ? ((await adapter.get('table', String(order.tableId), instanceId)) as Record<string, unknown> | null)
+  : null;
+const tableNumber = table && !table.deleted_at ? String(table.number ?? '') : '';
+const restaurant = table?.restaurantId
+  ? ((await adapter.get('restaurant', String(table.restaurantId), instanceId)) as Record<string, unknown> | null)
+  : null;
+const slug = restaurant && !restaurant.deleted_at ? String(restaurant.slug ?? '') : '';
+const cartaHref = slug
+  ? `/${encodeURIComponent(slug)}/menu`
+  : table?.qrCode
+    ? `/table/${encodeURIComponent(String(table.qrCode))}`
+    : '';
+---
+<BaseLayout title="Pedido confirmado — Fize" currentPath={`/order-confirmation/${orderId}`}>
+  <h1>Pedido confirmado</h1>
+  <OrderStatus tableNumber={tableNumber} cartaHref={cartaHref} />
+  <ul>
+    {lines.map((line) => (
+      <li>{line.name} × {line.qty}</li>
+    ))}
+  </ul>
+</BaseLayout>

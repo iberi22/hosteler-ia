@@ -1,0 +1,12 @@
+---
+// /local/historias/ — imagenes para los Estados de WhatsApp con la carta del local (docs/producto/NODO-LOCAL.md).
+// Estatica y precacheada: abre sin red. Las imagenes se dibujan en el equipo (Canvas 2D), sin servidor.
+import LocalLayout from '../../layouts/LocalLayout.astro';
+import StoryStudio from '../../components/local/StoryStudio.svelte';
+
+export const prerender = true;
+---
+
+<LocalLayout title="Historias para WhatsApp — Fize en este equipo">
+  <StoryStudio client:load />
+</LocalLayout>

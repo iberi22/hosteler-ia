@@ -1,0 +1,292 @@
+[
+  {
+    "active_compounds": [
+      {
+        "benefit": "Potent antimicrobial, lowers blood pressure, anti-inflammatory.",
+        "name": "Allicin",
+        "scientific_ref": "NIH - Garlic (Allium sativum L.)"
+      }
+    ],
+    "aliases": {
+      "es": [],
+      "en": [
+        "garlic",
+        "allium"
+      ]
+    },
+    "group": "Condiment",
+    "health_registry": [
+      {
+        "compounds": [
+          "Allicin",
+          "S-allylcysteine"
+        ],
+        "condition": "Hypertension",
+        "evidence_level": "High",
+        "mechanism": "Promotes nitric oxide synthesis leading to vasodilation.",
+        "studies": [
+          {
+            "doi": "10.1186/1471-2261-8-13",
+            "source": "BMC Cardiovascular Disorders",
+            "title": "Garlic for hypertension: A systematic review and meta-analysis",
+            "year": 2008
+          }
+        ]
+      },
+      {
+        "compounds": [
+          "Ajoene",
+          "Allicin"
+        ],
+        "condition": "Hyperlipidemia",
+        "evidence_level": "Medium",
+        "mechanism": "Inhibits cholesterol synthesis (HMG-CoA reductase inhibitor behavior).",
+        "studies": [
+          {
+            "link": "https://pubmed.ncbi.nlm.nih.gov/8374089/",
+            "source": "J. R. Coll. Physicians",
+            "title": "Garlic and serum lipids: A meta-analysis",
+            "year": 1993
+          }
+        ]
+      }
+    ],
+    "micronutrients": {
+      "manganese_mg": 1.67,
+      "selenium_ug": 14.2,
+      "vitamin_b6_mg": 1.2,
+      "vitamin_c_mg": 31
+    },
+    "name": "Ajo",
+    "nutrition_per_100g": {
+      "calories": 149,
+      "carbs_g": 33,
+      "fat_g": 0.5,
+      "fiber_g": 2.1,
+      "protein_g": 6.4,
+      "sugar_g": 1
+    },
+    "portions": {
+      "default_g": 3
+    },
+    "scientific_name": "Allium sativum",
+    "sources": [
+      "USDA FoodData Central",
+      "NIH National Center for Complementary and Integrative Health"
+    ],
+    "tags": [
+      "esencial",
+      "condimento",
+      "medicinal"
+    ],
+    "id": "gos:ingredient/ajo",
+    "slug": "ajo",
+    "names": {
+      "es": "Ajo",
+      "en": "garlic"
+    },
+    "allergens": []
+  },
+  {
+    "active_compounds": [
+      {
+        "benefit": "Slow digesting protein.",
+        "name": "Casein",
+        "scientific_ref": "General Nutrition"
+      }
+    ],
+    "aliases": {
+      "es": [],
+      "en": [
+        "milk"
+      ]
+    },
+    "group": "Dairy",
+    "micronutrients": {
+      "calcium_mg": 113,
+      "vitamin_d_iu": 44
+    },
+    "name": "Leche Entera",
+    "nutrition_per_100g": {
+      "calories": 61,
+      "carbs_g": 4.8,
+      "fat_g": 3.3,
+      "fiber_g": 0,
+      "protein_g": 3.2,
+      "sugar_g": 5
+    },
+    "portions": {
+      "default_g": 244
+    },
+    "scientific_name": "Bos taurus (secreción)",
+    "sources": [
+      "USDA FoodData Central"
+    ],
+    "tags": [
+      "bebida",
+      "postre",
+      "sopa"
+    ],
+    "id": "gos:ingredient/leche",
+    "slug": "leche",
+    "names": {
+      "es": "Leche Entera",
+      "en": "milk"
+    },
+    "allergens": [],
+    "health_registry": []
+  },
+  {
+    "name": "Arroz Blanco",
+    "scientific_name": "Oryza sativa",
+    "group": "Grain",
+    "portions": {
+      "default_g": 50
+    },
+    "nutrition_per_100g": {
+      "calories": 365,
+      "protein_g": 7.1,
+      "fat_g": 0.7,
+      "carbs_g": 80,
+      "fiber_g": 1.3,
+      "sugar_g": 0.1
+    },
+    "micronutrients": {
+      "manganese_mg": 1.1,
+      "selenium_ug": 15.1,
+      "thiamin_mg": 0.6,
+      "niacin_mg": 1.6
+    },
+    "active_compounds": [
+      {
+        "name": "Starch (Amylopectin/Amylose)",
+        "benefit": "Rapid energy source.",
+        "scientific_ref": "USDA"
+      }
+    ],
+    "health_registry": [
+      {
+        "condition": "Energy Recovery",
+        "mechanism": "High glycemic index carbohydrates replenish muscle glycogen rapidly after exercise.",
+        "compounds": [
+          "Amylopectin"
+        ],
+        "evidence_level": "High",
+        "studies": [
+          {
+            "title": "Carbohydrates for training and competition",
+            "source": "Journal of Sports Sciences",
+            "year": 2011
+          }
+        ]
+      },
+      {
+        "condition": "Digestive Tolerance",
+        "mechanism": "Low fiber and low residue make it ideal for managing gastrointestinal distress (BRAT diet).",
+        "compounds": [
+          "Easily digestible starch"
+        ],
+        "evidence_level": "Medium"
+      }
+    ],
+    "sources": [
+      "USDA FoodData Central"
+    ],
+    "tags": [
+      "base",
+      "energia",
+      "sin_gluten"
+    ],
+    "id": "gos:ingredient/arroz",
+    "slug": "arroz",
+    "names": {
+      "es": "Arroz Blanco"
+    },
+    "aliases": {
+      "es": [],
+      "en": []
+    },
+    "allergens": []
+  },
+  {
+    "active_compounds": [
+      {
+        "benefit": "Essential for brain development and liver function.",
+        "name": "Choline",
+        "scientific_ref": "NIH"
+      },
+      {
+        "benefit": "Carotenoids critical for eye health (accumulate in retina).",
+        "name": "Lutein & Zeaxanthin",
+        "scientific_ref": "PubMed"
+      }
+    ],
+    "aliases": {
+      "es": [],
+      "en": [
+        "egg"
+      ]
+    },
+    "group": "Protein",
+    "health_registry": [
+      {
+        "compounds": [
+          "Lutein",
+          "Zeaxanthin"
+        ],
+        "condition": "Eye Health (AMD)",
+        "evidence_level": "High",
+        "mechanism": "Macular pigment optical density improvement via Lutein/Zeaxanthin absorption.",
+        "studies": [
+          {
+            "doi": "10.1093/ajcn/83.4.880",
+            "source": "American Journal of Clinical Nutrition",
+            "title": "Egg consumption and risk of age-related macular degeneration",
+            "year": 2006
+          }
+        ]
+      },
+      {
+        "compounds": [
+          "Choline"
+        ],
+        "condition": "Cognitive Function",
+        "evidence_level": "Medium",
+        "mechanism": "Choline is a precursor to acetylcholine, a neurotransmitter for memory and muscle control."
+      }
+    ],
+    "micronutrients": {
+      "choline_mg": 294,
+      "selenium_ug": 30.8,
+      "vitamin_a_iu": 520,
+      "vitamin_d_iu": 87
+    },
+    "name": "Huevo",
+    "nutrition_per_100g": {
+      "calories": 155,
+      "carbs_g": 1.1,
+      "fat_g": 11,
+      "fiber_g": 0,
+      "protein_g": 13
+    },
+    "portions": {
+      "default_g": 50
+    },
+    "scientific_name": "Gallus gallus domesticus",
+    "sources": [
+      "USDA FoodData Central"
+    ],
+    "tags": [
+      "desayuno",
+      "cerebro",
+      "vision_saludable"
+    ],
+    "id": "gos:ingredient/huevo",
+    "slug": "huevo",
+    "names": {
+      "es": "Huevo",
+      "en": "egg"
+    },
+    "allergens": []
+  }
+]

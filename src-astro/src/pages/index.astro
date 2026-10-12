@@ -1,0 +1,18 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Landing from '../components/Landing.svelte';
+
+// Nada en la landing es por peticion (sin sesion, sin API, sin storage): se
+// genera en el build y se sirve como archivo estatico, 0 peticiones al Worker.
+export const prerender = true;
+---
+
+<BaseLayout
+  title="Fize — Orden en tu cocina, gratis"
+  description="Carta digital con QR, pedidos a cocina, recetas con costo e inventario automático para restaurantes en Colombia. Gratis y sin vender tus datos."
+  canonical="https://fize.swal.network/"
+  currentPath="/"
+  showNav={false}
+>
+  <Landing />
+</BaseLayout>

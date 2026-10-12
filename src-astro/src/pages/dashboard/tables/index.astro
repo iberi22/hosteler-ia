@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import TableMap from '../../../components/tables/TableMap.svelte';
+---
+<BaseLayout showNav title="Fi'ze — Mesas">
+  <div class="page">
+    <h1 class="title">Mesas</h1>
+    <p class="sub">Gestión de mesas y códigos QR de pedido</p>
+    <TableMap client:load />
+  </div>
+</BaseLayout>
+
+<style>
+  .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; display: grid; gap: 1rem; }
+  .title { font-size: 1.5rem; font-weight: 800; color: var(--swal-text); }
+  .sub { color: var(--swal-text-secondary); }
+</style>

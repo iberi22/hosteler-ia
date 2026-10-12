@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Fast secret scan on staged additions. No lint-staged: the repo has no
+# staged-file linter configured (no biome/eslint/prettier); type check and
+# tests run in CI and via `pnpm build`.
+PATTERN='(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{36,}|sk-[A-Za-z0-9]{32,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35})'
+HITS=$(git diff --cached --diff-filter=ACMR -U0 --no-color | grep -E '^\+[^+]' | grep -E "$PATTERN" || true)
+if [ -n "$HITS" ]; then
+  echo "ERROR: possible secret in staged changes. Commit aborted."
+  echo "$HITS" | cut -c1-120
+  exit 1
+fi

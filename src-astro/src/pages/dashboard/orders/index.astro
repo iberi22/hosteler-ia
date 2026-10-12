@@ -1,0 +1,155 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import KitchenQueue from '../../../components/orders/KitchenQueue.svelte';
+import { Card } from '@swal/ui';
+import { ORDER_STATUSES, isOrderStatus } from '../../../lib/orderStateMachine';
+
+// Filter chips link to /dashboard/orders/?status=X, updating searchParams and the documented API URL
+// for staff tooling & REST consumers, while KitchenQueue manages the live active kitchen queue.
+const rawStatus = Astro.url.searchParams.get('status');
+const activeStatus = isOrderStatus(rawStatus) ? rawStatus : null;
+
+const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=${activeStatus}` : ''}`;
+---
+
+<BaseLayout showNav title="Pedidos — Fi'ze Dashboard">
+  <main class="orders-page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">← Inicio</a>
+      <span>/</span>
+      <span>Pedidos</span>
+    </nav>
+
+    <header class="orders-header">
+      <div>
+        <h1>Pedidos</h1>
+        <p class="sub">Listado de pedidos en tiempo real — KDS mesh integrado.</p>
+      </div>
+    </header>
+
+    <Card variant="surface" padding="md">
+      <p class="hint">
+        Visualización completa de pedidos en cocina. Para entrar al KDS interactivo, abre
+        <a href="/dashboard/kitchen/">Cocina</a>.
+      </p>
+
+      <div class="filter-section">
+        <span class="filter-label">Filtrar por estado:</span>
+        <div class="chips-container" role="navigation" aria-label="Filtro de estado de pedidos">
+          <a
+            href="/dashboard/orders/"
+            class={`chip ${activeStatus === null ? 'active' : ''}`}
+          >
+            Todos
+          </a>
+          {ORDER_STATUSES.map((status) => (
+            <a
+              href={`/dashboard/orders/?status=${status}`}
+              class={`chip ${activeStatus === status ? 'active' : ''}`}
+            >
+              {status}
+            </a>
+          ))}
+        </div>
+      </div>
+    </Card>
+
+    <KitchenQueue client:load autoPublish={false} />
+
+    <Card variant="elevated" padding="md">
+      <h2>API de Pedidos</h2>
+      <p class="hint">Endpoint REST consumido por el KDS y el dashboard.</p>
+      <pre class="endpoint"><code>GET {apiEndpointUrl}</code></pre>
+    </Card>
+  </main>
+</BaseLayout>
+
+<style>
+  .orders-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--swal-text-muted);
+    font-size: 0.85rem;
+  }
+  .crumbs a {
+    color: var(--swal-accent-cyan);
+    text-decoration: none;
+  }
+  .crumbs a:hover { text-decoration: underline; }
+  .orders-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+  }
+  .orders-header h1 {
+    margin: 0;
+    color: var(--swal-text);
+    font-size: 1.6rem;
+  }
+  .sub {
+    color: var(--swal-text-secondary);
+    margin: 0.25rem 0 0;
+    font-size: 0.95rem;
+  }
+  .hint { color: var(--swal-text-secondary); margin: 0 0 0.75rem; font-size: 0.9rem; }
+  .filter-section {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .filter-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--swal-text);
+  }
+  .chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .chip {
+    display: inline-block;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-decoration: none;
+    color: var(--swal-text-secondary);
+    background: var(--swal-bg-elevated);
+    border: 1px solid var(--swal-border);
+    transition: all 0.15s ease-in-out;
+  }
+  .chip:hover {
+    color: var(--swal-text);
+    border-color: var(--swal-accent-cyan);
+  }
+  .chip.active {
+    background: var(--swal-accent-cyan);
+    color: #000;
+    border-color: var(--swal-accent-cyan);
+    font-weight: 700;
+  }
+  .endpoint {
+    background: var(--swal-bg-elevated);
+    border: 1px solid var(--swal-border);
+    border-radius: 6px;
+    padding: 0.65rem 0.85rem;
+    color: var(--swal-accent-cyan);
+    font-family: var(--swal-font-mono);
+    font-size: 0.85rem;
+    margin: 0;
+    overflow-x: auto;
+  }
+  h2 { color: var(--swal-text); margin: 0 0 0.5rem; font-size: 1.05rem; }
+</style>

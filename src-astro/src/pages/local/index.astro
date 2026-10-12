@@ -1,0 +1,11 @@
+---
+// /local/ — nodo local sin registro (docs/producto/NODO-LOCAL.md). Estatica: sin sesion, sin API del Worker.
+import LocalLayout from '../../layouts/LocalLayout.astro';
+import LocalHome from '../../components/local/LocalHome.svelte';
+
+export const prerender = true;
+---
+
+<LocalLayout title="Fize en este equipo">
+  <LocalHome client:load />
+</LocalLayout>

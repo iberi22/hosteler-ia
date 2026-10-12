@@ -1,0 +1,3 @@
+gastronomic-open-standard-GOS salud/g2 b8d50775
+Source: packages/gos-client
+Adaptation: exports point to src/index.ts for Astro/Vite (no generated dist required).

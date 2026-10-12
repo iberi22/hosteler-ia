@@ -1,0 +1,1 @@
+Fixtures recortados del export real GOS salud/g2 b8d50775, site/public/api/v1. El manifest se conserva intacto (su hash describe el dataset original completo, no este subconjunto). Solo para tests; no constituyen un catálogo propio de Fize. Licencia y atribución en manifest.json.

@@ -1,0 +1,44 @@
+{
+  // Wrangler LOCAL: suite E2E, CI y build/preview cuando no hay wrangler.jsonc (repo publico).
+  //
+  // Solo bindings locales de miniflare (.wrangler/state): los ids son de relleno y NO existen en ninguna
+  // cuenta de Cloudflare. La config real (ids de la cuenta) no se versiona; plantilla en
+  // wrangler.example.jsonc. Los comandos de wrangler de la suite pasan `--config wrangler.e2e.jsonc`
+  // para abrir la MISMA D1 local que sirve `astro preview`.
+  //
+  // Por que existe: el binding `AI` es de tipo "remote" en
+  // @cloudflare/vite-plugin, o sea que no tiene simulador local. Al arrancar,
+  // el plugin abre una sesion remota de wrangler y exige CLOUDFLARE_API_TOKEN.
+  // En CI no hay token ni sesion guardada, asi que `astro preview` moria antes
+  // de que Playwright pudiera correr un solo test:
+  //
+  //   Failed to start the remote proxy session ... it's necessary to set a
+  //   CLOUDFLARE_API_TOKEN environment variable for wrangler to work
+  //   -> Process from config.webServer was not able to start. Exit code: 1
+  //
+  // La app no necesita `AI` para la E2E: `api/ai/infer.ts` ya cae a `mockEnv`
+  // cuando `env.AI` no existe, y ningun spec toca inferencia remota (esa ruta
+  // exige sesion y tier socio).
+  //
+  // Lo que SI conserva, y es lo que persisten los datos contra los que se
+  // afirman los 33 tests: SESSION (KV), SWAL_KV (KV), SWAL_D1 y SWAL_R2.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fize-astro-e2e",
+  "compatibility_date": "2024-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "kv_namespaces": [
+    { "binding": "SESSION", "id": "local-fize-session" },
+    { "binding": "SWAL_KV", "id": "local-fize-kv" }
+  ],
+  // `wrangler d1 execute SWAL_D1 --local --config wrangler.e2e.jsonc` (specs) y `astro preview` tienen
+  // que abrir la MISMA D1 local de miniflare: por eso los dos leen este archivo.
+  "d1_databases": [
+    {
+      "binding": "SWAL_D1",
+      "database_name": "fize-local-db",
+      "database_id": "local-fize-db"
+    }
+  ],
+  "r2_buckets": [{ "binding": "SWAL_R2", "bucket_name": "fize-local-r2" }]
+}

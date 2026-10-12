@@ -1,0 +1,99 @@
+import type { APIRoute } from 'astro';
+import { z } from 'zod';
+import { createStorageAdapter } from '../../../lib/storageAdapter';
+import { domainConfig } from '../../../lib/domain.config';
+import type { DomainRecord } from '../../../lib/domain';
+import { requireSession, AuthError } from '../../../lib/auth/session';
+
+const createCategorySchema = z.object({
+  name: z.string().min(1, { message: 'Name is required' }),
+  description: z.string().optional(),
+  instance_id: z.string().optional(),
+});
+
+function genId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveInstance(request: Request, fallback?: string): string {
+  const url = new URL(request.url);
+  return fallback ?? url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+}
+
+export const GET: APIRoute = async ({ request, locals }) => {
+  try {
+    const adapter = createStorageAdapter(locals);
+    const list = await adapter.list('category', resolveInstance(request));
+    const active = list.filter((item) => !(item as Record<string, unknown>).deleted_at);
+
+    return new Response(JSON.stringify(active), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};
+
+export const POST: APIRoute = async ({ request, locals }) => {
+  try {
+    requireSession(locals);
+
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const validation = createCategorySchema.safeParse(body);
+    if (!validation.success) {
+      return new Response(
+        JSON.stringify({
+          error: 'Validation failed',
+          details: z.treeifyError(validation.error),
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+    }
+
+    const data = validation.data;
+    const now = new Date().toISOString();
+    const newRecord: DomainRecord = {
+      id: genId(),
+      instance_id: resolveInstance(request, data.instance_id),
+      name: data.name,
+      description: data.description ?? null,
+      created_at: now,
+      updated_at: now,
+    } as DomainRecord;
+
+    const adapter = createStorageAdapter(locals);
+    const created = await adapter.create('category', newRecord);
+
+    return new Response(JSON.stringify(created), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
+      return new Response(JSON.stringify({ error: (err as { message?: string }).message ?? 'Authentication required' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};

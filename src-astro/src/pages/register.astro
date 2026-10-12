@@ -1,0 +1,20 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import RegisterForm from '../components/auth/RegisterForm.svelte';
+import es from '../i18n/es.json';
+import { CONTACT_URL } from '../lib/contact';
+
+const t = (es as any).auth?.register ?? {};
+---
+<BaseLayout title="Crear cuenta — Fi'ze" currentPath="/register">
+  <RegisterForm
+    client:load
+    title={t.title ?? 'Crear cuenta en Fi’ze'}
+    nameLabel={t.name ?? 'Nombre'}
+    emailLabel={t.email ?? 'Correo'}
+    passwordLabel={t.password ?? 'Contraseña (mín. 8)'}
+    submitLabel={t.submit ?? 'Registrarme'}
+    loginHint={t.hasAccount ?? '¿Ya tienes cuenta?'}
+    contactHref={CONTACT_URL}
+  />
+</BaseLayout>

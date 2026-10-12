@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+commit_regex='^(feat|fix|chore|docs|style|refactor|test|ci|perf|revert)(\(.+\))?: .{1,100}$'
+message=$(cat "$1")
+if ! echo "$message" | grep -qE "$commit_regex"; then
+  echo "❌ ERROR: Commit message must follow conventional commit format:"
+  echo "   feat(scope): message"
+  echo "   fix(scope): message"
+  echo "   chore(scope): message"
+  echo "   docs(scope): message"
+  echo "   test(scope): message"
+  echo "   refactor(scope): message"
+  echo "   ci(scope): message"
+  echo "   perf(scope): message"
+  echo ""
+  echo "   Example: fix(auth): resolve login redirect loop"
+  exit 1
+fi
+echo "✅ Commit message format OK"

@@ -1,0 +1,64 @@
+---
+// Carta publica por slug: fize.swal.network/{tienda}/menu
+//
+// Es la URL que se imprime en el QR de la mesa y la que el cliente final abre.
+// No pide sesion. Solo expone platos publicos: las recetas no se consultan
+// aqui (ver src/lib/publicMenuBySlug.ts).
+//
+// Primero la carta PUBLICADA (instantanea firmada de un nodo local, R2 `public/menu/<slug>.json`, Cache
+// API 60 s); si no hay, la de la nube como siempre. `?mesa=N` (QR de la mesa) va en el mensaje de WhatsApp.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PublicMenu from '../../components/menu/PublicMenu.svelte';
+import { createStorageAdapter } from '../../lib/storageAdapter';
+import { domainConfig } from '../../lib/domain.config';
+import { loadMenuBySlug } from '../../lib/publicMenuBySlug';
+import { loadMenuForPublicPage, sanitizeMesa } from '../../lib/publicMenuSnapshot';
+import { getWorkerBindings, getWorkerCache } from '../../lib/workerBindings';
+
+const { slug } = Astro.params;
+const instanceId = Astro.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+
+if (!slug) {
+  return Astro.redirect('/');
+}
+
+const env = await getWorkerBindings();
+const loaded = await loadMenuForPublicPage({
+  slug,
+  r2: env?.SWAL_R2,
+  origin: Astro.url.origin,
+  cache: getWorkerCache(),
+  loadFromAdapter: () => loadMenuBySlug(createStorageAdapter(Astro.locals), instanceId, slug),
+});
+const menu = loaded?.menu;
+const mesa = sanitizeMesa(Astro.url.searchParams.get('mesa'));
+
+if (!loaded || !menu) {
+  return new Response(
+    `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Carta no encontrada — Fi'ze</title></head>` +
+      `<body style="font-family:system-ui;background:#0a0a0a;color:#eee;display:grid;place-items:center;height:100vh;margin:0">` +
+      `<div style="text-align:center"><h1 style="font-size:1.4rem">No encontramos esa carta</h1>` +
+      `<p style="opacity:.7">Revisa el enlace o escanea el codigo QR de la mesa.</p></div></body></html>`,
+    { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+  );
+}
+
+const fromCloud = loaded.source === 'cloud';
+const base = import.meta.env.PUBLIC_BASE_URL?.replace(/\/$/, '') ?? Astro.url.origin;
+---
+
+<BaseLayout title={`${menu.restaurant.name} — Carta`} currentPath={`/${menu.restaurant.slug || slug}/menu`} showNav={false}>
+  <PublicMenu
+    client:load
+    instanceId={instanceId}
+    restaurantId={menu.restaurant.id}
+    restaurantName={menu.restaurant.name}
+    categories={menu.categories}
+    items={menu.items}
+    storeSlug={menu.restaurant.slug || slug}
+    restaurantPhone={menu.restaurant.phone ?? ''}
+    baseUrl={base}
+    tableLabel={mesa}
+    loadNutrition={fromCloud}
+  />
+</BaseLayout>

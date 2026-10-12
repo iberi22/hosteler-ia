@@ -1,0 +1,168 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-astro
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Astro type check
+        run: pnpm run check
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-astro
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm vitest run
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-astro
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # El browser de Playwright no trae las librerias del sistema en Linux:
+      # sin esto la suite muere con libnspr4.so y el fallo se reporta como
+      # "Target page, context or browser has been closed", que no dice nada.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # `test:e2e` compila antes de correr. `astro preview` sirve dist/, y sin
+      # el build la suite prueba el bundle viejo: client-journey fallaba con
+      # 401 en POST /api/orders aunque el source ya tuviera el fix.
+      - name: Run E2E suite
+        run: pnpm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: src-astro/playwright-report
+          retention-days: 7
+
+  public-tree:
+    name: Public tree has no real infra ids or secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.26.0
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      # Falla si un archivo fuera de private/ trae ids reales de Cloudflare o un secreto (gitleaks).
+      - name: Check public tree
+        run: bash scripts/check-public-tree.sh
+
+  # Solo en el repo privado: el ledger de features (private/gitcore) no existe en el arbol publico.
+  verify-features:
+    name: Feature claims are honest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Sin esto, features.json puede volver a declarar 100% sin comprobar nada:
+      # el validador falla si alguna feature dice verified/shipped y su evidencia
+      # no existe, o si se marca "measured" sin poder comprobar nada.
+      - name: Verify feature claims are backed by evidence
+        if: ${{ hashFiles('private/gitcore/features.json') != '' }}
+        run: node private/gitcore/scripts/verify-features.mjs
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-astro
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `build:ci` y no `build`: el binding AI es de tipo "remote" en
+      # @cloudflare/vite-plugin, o sea que no tiene simulador local. Al
+      # prerenderizar /offline el plugin abre una sesion de wrangler y exige
+      # CLOUDFLARE_API_TOKEN, que este job no tiene. El deploy (fuera de este
+      # repo) usa `build` con su wrangler.jsonc real.
+      - name: Build Astro SSR
+        run: pnpm run build:ci

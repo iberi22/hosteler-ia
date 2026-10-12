@@ -1,0 +1,18 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import LoginForm from '../components/auth/LoginForm.svelte';
+import es from '../i18n/es.json';
+import { CONTACT_URL } from '../lib/contact';
+
+const t = (es as any).auth?.login ?? {};
+---
+<BaseLayout title="Entrar — Fi'ze" currentPath="/login">
+  <LoginForm
+    client:load
+    title={t.title ?? 'Entrar a Fi’ze'}
+    emailLabel={t.email ?? 'Correo'}
+    passwordLabel={t.password ?? 'Contraseña'}
+    submitLabel={t.submit ?? 'Entrar'}
+    contactHref={CONTACT_URL}
+  />
+</BaseLayout>

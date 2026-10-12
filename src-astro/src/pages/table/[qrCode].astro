@@ -1,0 +1,44 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PublicMenu from '../../components/menu/PublicMenu.svelte';
+import CartSidebar from '../../components/client/CartSidebar.svelte';
+import { createStorageAdapter } from '../../lib/storageAdapter';
+import { domainConfig } from '../../lib/domain.config';
+import { loadTableOrder } from '../../lib/tableQr';
+
+const { qrCode } = Astro.params;
+const instanceId = Astro.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+
+if (!qrCode) {
+  return Astro.redirect('/');
+}
+
+const adapter = createStorageAdapter(Astro.locals);
+const data = await loadTableOrder(adapter, instanceId, qrCode);
+
+if (!data) {
+  return new Response('Código QR no válido', { status: 404 });
+}
+
+const categories = [...new Map(data.menuItems.map((m) => [m.categoryId, m.categoryId])).keys()].map((id) => ({
+  id,
+  name: id,
+}));
+---
+<BaseLayout title={`Mesa ${data.table.number} — Fi'ze`} currentPath={`/table/${qrCode}`}>
+  <p>Mesa {data.table.number}{data.restaurant ? ` · ${data.restaurant.name}` : ''}</p>
+  <div class="table-grid">
+    <PublicMenu
+      client:load
+      restaurantName={data.restaurant?.name ?? 'Carta'}
+      categories={categories}
+      items={data.menuItems}
+    />
+    <CartSidebar client:load tableId={data.table.id} tableLabel={`Mesa ${data.table.number}`} />
+  </div>
+</BaseLayout>
+
+<style>
+  .table-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; align-items: start; }
+  @media (max-width: 800px) { .table-grid { grid-template-columns: 1fr; } }
+</style>

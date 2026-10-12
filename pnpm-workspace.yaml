@@ -1,0 +1,63 @@
+# SWAL Hosteler-IA pnpm workspace
+# src-astro/ is the only workspace package. private/saas-backend and private/saas-client (private repo
+# only) are standalone: they were never in the lockfile, so they stay out of the workspace and the public
+# tree installs with --frozen-lockfile whether private/ exists or not.
+
+packages:
+  - "./src-astro"
+
+# Avoid purging the core dependency cache on install
+confirmModulesPurge: false
+
+# pnpm >=11 supply-chain: minimumReleaseAge (24h) bloquea CI en contenedor
+# para paquetes que subimos a latest estable a proposito (2026-09-05).
+# Excepcion quirurgica solo para esos 4; el resto sigue protegido.
+minimumReleaseAgeExclude:
+  # Cores propios de SWAL publicados en npm (antes vendorizados en cores/): se suben a proposito en el
+  # mismo dia en que se publican. Son del mismo dueno que este repo.
+  - "@swal/ui"
+  - "@swal/vault"
+  - "@cloudflare/workers-types"
+  - "@playwright/test"
+  - "playwright-core"
+  - "playwright"
+
+# GHSA fast-uri (4 HIGH, via ajv@8): forzar 3.1.7 parcheado.
+# overrides vive aqui en pnpm>=11 (ya no se lee package.json:pnpm.overrides).
+overrides:
+  #   fast-uri         3.1.7  -> 3.1.8   GHSA-hrr3-gc8f-f4qj
+  fast-uri: "3.1.8"
+  # Alertas HIGH abiertas en Dependabot. Los overrides van aqui, en
+  # pnpm-workspace.yaml, y no en package.json:pnpm.overrides: pnpm>=11 ya no
+  # lee el campo del package.json. Cada linea lleva el GHSA al lado, porque un
+  # pin sin referencia es un numero magico dentro de seis meses.
+  #   sharp            0.35.2 -> 0.35.4  GHSA-rgj7-g3m4-5g8c  (via miniflare)
+  #   undici           7.29.0 -> 7.29.1  GHSA-w293-vg96-wgc3  (via miniflare)
+  #   undici           8.10.0 -> 8.10.2  GHSA-vp8m-p9jh-q5pm  (via jsdom/unifont)
+  #   brace-expansion  2.1.4  -> 2.1.7   GHSA-qhr7-859c-m2p7 + GHSA-x5c9-vprh-p7h4
+  #                            (via minimatch@5, cadena de build de vite-plugin-pwa)
+  #   brace-expansion  5.0.9  -> 5.0.12  GHSA-qhr7-859c-m2p7 + GHSA-q2hr-2g5m-vwhr
+  #                            (via minimatch@10; 5.0.12 cierra las dos alertas)
+  sharp: "0.35.4"
+  undici@7: "7.29.1"
+  undici@8: "8.10.2"
+  brace-expansion@2: "2.1.7"
+  brace-expansion@5: "5.0.12"
+  # TypeScript 7 (2026-09) todavia NO trae la API programatica que usa
+  # `astro check`, asi que sube el gate entero a rojo:
+  #   The TypeScript module loaded (found 7.0.2) does not expose the
+  #   programmatic API that `astro check` relies on. TypeScript's native
+  #   compiler (7.0 and later) does not ship this API yet.
+  # Astro 7.3.1 todavia no lo soporta:
+  #   https://github.com/withastro/roadmap/discussions/1321
+  # Por eso el pin, y por eso es `5.9.3` exacto y no `^5.9.3`: un `^` deja
+  # que el proximo Dependabot suba a 7 otra vez sin que nadie lo note.
+  # QUITAR cuando Astro exponga la API de TS7 (ver el discussion 1321).
+  typescript: "5.9.3"
+
+# pnpm >=11 falla `pnpm install` con ERR_PNPM_IGNORED_BUILDS cuando hay
+# dependencias con postinstall sin aprobar (CI: Type Check, Unit Tests, Build).
+# En pnpm 11.x el reemplazo de onlyBuiltDependencies es `allowBuilds`.
+allowBuilds:
+  esbuild: true
+  workerd: true

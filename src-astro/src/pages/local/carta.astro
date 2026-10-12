@@ -1,0 +1,11 @@
+---
+// /local/carta/ — modo local (docs/producto/NODO-LOCAL.md §2.1). Estatica y precacheada: abre sin red.
+import LocalLayout from '../../layouts/LocalLayout.astro';
+import LocalView from '../../components/local/LocalView.svelte';
+
+export const prerender = true;
+---
+
+<LocalLayout title="Carta — Fize en este equipo">
+  <LocalView view="carta" client:load />
+</LocalLayout>

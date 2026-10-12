@@ -1,0 +1,9 @@
+---
+// Hoja imprimible de QR de mesas. Sin menu de la app (showNav=false) y con CSS
+// @media print en el componente: una tarjeta por mesa, 8 por pagina A4.
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import TableQrSheet from '../../../components/tables/TableQrSheet.svelte';
+---
+<BaseLayout title="Fi'ze — Imprimir QR de mesas" currentPath="/dashboard/tables" showNav={false}>
+  <TableQrSheet client:load />
+</BaseLayout>

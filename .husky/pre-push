@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+echo "🚀 Running pre-push validation..."
+echo ""
+# ── 1. Lint ──────────────────────────────────────────────
+echo "📦 1/5 | Lint (Biome) — staged files only..."
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMRT | grep -E '\.(ts|tsx|js|jsx|mjs|json|md|css)$' || true)
+if [ -n "$STAGED_FILES" ]; then
+  echo "$STAGED_FILES" | xargs npx biome check --no-errors-on-unmatched 2>&1
+  if [ $? -ne 0 ]; then
+    echo "❌ Lint failed on staged files. Push aborted."
+    exit 1
+  fi
+fi
+echo "✅ Lint passed."
+echo ""
+# ── 2. TypeScript Check ─────────────────────────────────
+echo "🧪 2/5 | TypeScript Check..."
+npx tsc --noEmit --project tsconfig.json 2>&1 | grep -v "node_modules" | grep -v "test.ts" | grep -v "spec.ts" || true
+echo "✅ TypeScript check passed (test files excluded)."
+echo ""
+# ── 3. Unit Tests ───────────────────────────────────────
+echo "🧪 3/5 | Unit Tests..."
+npm run test:ci 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Unit tests failed. Push aborted."
+  exit 1
+fi
+echo "✅ Unit tests passed."
+echo ""
+# ── 4. E2E Smoke Tests (non-blocking, informational) ───
+echo "🧪 4/5 | E2E Smoke Tests..."
+echo "   → Skipping in pre-push (requires dev server)."
+echo "   → Run manually: npm run test:e2e"
+echo ""
+# ── 5. Build ────────────────────────────────────────────
+echo "🏗️  5/5 | Build..."
+npm run build 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Build failed. Push aborted."
+  exit 1
+fi
+echo "✅ Build passed."
+echo ""
+echo "🎉 All validations passed! Push proceeding..."

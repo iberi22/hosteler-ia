@@ -1,0 +1,100 @@
+{
+  "landing": {
+    "title": "Fi'ze - Plataforma de Gestión Gastronómica",
+    "description": "Menú digital QR, pedidos autónomos, gestión de inventario y finanzas para restaurantes.",
+    "header": {
+      "subtitle": "Gestión Gastronómica Inteligente",
+      "version": "v1.0 Listo"
+    },
+    "trustBadge": "Confiado por 500+ restaurantes",
+    "headline": "Restaurante",
+    "headlineHighlight": "Inteligente",
+    "subheadline": "Plataforma impulsada por IA para menús QR, pedidos, pagos y analíticas.",
+    "freeForever": "Gratis para siempre",
+    "proPlans": "Planes Pro para escalar",
+    "cta": "Empieza Gratis Hoy",
+    "pricing": "Ver Planes",
+    "features": {
+      "qr": {
+        "title": "Menú QR y Pedidos",
+        "description": "Experiencia gastronómica sin contacto"
+      },
+      "analytics": {
+        "title": "Analíticas con IA",
+        "description": "Predicción de demanda y perspectivas"
+      },
+      "payments": {
+        "title": "Pagos Seguros",
+        "description": "Cumplimiento Stripe y GDPR"
+      }
+    },
+    "socialProof": {
+      "noFees": "Sin comisiones",
+      "gdpr": "Cumplimiento GDPR",
+      "support": "Soporte 24/7"
+    },
+    "footer": {
+      "copyright": "© 2025 Creado para restaurantes modernos"
+    }
+  },
+  "pricing": {
+    "signIn": "Iniciar Sesión",
+    "badge": "Precios simples y transparentes",
+    "title": "Elige tu Plan",
+    "subtitle": "El software completo es gratuito. La única suscripción opcional es el almacenamiento en la nube de tus datos, cifrado y protegido.",
+    "featuresSection": {
+      "title": "Todo lo que necesitas para gestionar un restaurante moderno",
+      "fast": {
+        "title": "Rápido como un rayo",
+        "description": "Pedidos procesados en segundos con nuestro sistema optimizado"
+      },
+      "secure": {
+        "title": "Seguro y Conforme",
+        "description": "Cumplimiento GDPR con seguridad de nivel empresarial"
+      },
+      "support": {
+        "title": "Soporte 24/7",
+        "description": "Asistencia las 24 horas cuando la necesites"
+      }
+    },
+    "ctaSection": {
+      "title": "¿Listo para transformar tu restaurante?",
+      "subtitle": "Únete a cientos de restaurantes que ya usan Fi'ze",
+      "cta1": "Prueba Gratis",
+      "cta2": "Solicitar Demo"
+    },
+    "storage": {
+      "mostPopular": "Único plan",
+      "name": "Almacenamiento en la nube",
+      "priceNote": "Suscripción opcional — solo para datos en la nube",
+      "description": "Tus datos en la nube, cifrados y protegidos. El software completo es gratuito.",
+      "feature1": "Cifrado de extremo a extremo de tus datos",
+      "feature2": "Copias de seguridad automáticas y protegidas",
+      "feature3": "Sincronización segura entre tus dispositivos",
+      "feature4": "Tus datos son tuyos: exportables cuando quieras",
+      "feature5": "Sin anuncios y sin venta de datos",
+      "cta": "Ir al dashboard"
+    }
+  },
+  "common": {
+    "language": "Idioma",
+    "spanish": "Español",
+    "english": "Inglés"
+  },
+  "auth": {
+    "login": {
+      "title": "Entrar a Fi’ze",
+      "email": "Correo",
+      "password": "Contraseña",
+      "submit": "Entrar"
+    },
+    "register": {
+      "title": "Crear cuenta en Fi’ze",
+      "name": "Nombre",
+      "email": "Correo",
+      "password": "Contraseña (mín. 8)",
+      "submit": "Registrarme",
+      "hasAccount": "¿Ya tienes cuenta?"
+    }
+  }
+}

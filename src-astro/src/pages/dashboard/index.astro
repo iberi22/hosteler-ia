@@ -1,0 +1,195 @@
+---
+// /dashboard — indice del panel. El login redirige aqui, asi que es la primera
+// pantalla que ve el restaurante: tiene que responder "¿como va mi negocio?"
+// en menos de 5 segundos, sin exigir que el usuario sepa donde hacer clic.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { createStorageAdapter } from '../../lib/storageAdapter';
+import { domainConfig } from '../../lib/domain.config';
+import { orderTotal } from '../../lib/orderTotal';
+
+const instanceId = Astro.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+const adapter = createStorageAdapter(Astro.locals);
+
+const list = async (entity: string) => {
+  try {
+    const rows = await adapter.list(entity as never, instanceId);
+    return rows.filter((r) => !(r as Record<string, unknown>).deleted_at);
+  } catch {
+    return [];
+  }
+};
+
+const [orders, tables, menuItems, inventory] = await Promise.all([
+  list('order'),
+  list('table'),
+  list('menuItem'),
+  list('inventoryItem'),
+]);
+
+const today = new Date().toISOString().slice(0, 10);
+const ordersToday = orders.filter((o) => String((o as any).created_at ?? '').startsWith(today));
+
+const lowStock = inventory.filter(
+  (i) => Number((i as any).stock ?? 0) <= Number((i as any).minStock ?? Number.POSITIVE_INFINITY),
+);
+const revenue = ordersToday
+  .filter((o) => (o as { status?: string }).status === 'paid')
+  .reduce((acc, o) => acc + orderTotal((o as { items?: unknown }).items), 0);
+
+const money = (n: number) =>
+  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
+
+const kpis = [
+  { label: 'Pedidos hoy', value: String(ordersToday.length), tone: 'accent' },
+  { label: 'En cocina', value: String(ordersToday.filter((o) => { const s = (o as { status?: string }).status; return s === 'pending' || s === 'preparing'; }).length), tone: 'warn' },
+  { label: 'Listos para servir', value: String(ordersToday.filter((o) => (o as { status?: string }).status === 'ready').length), tone: 'ok' },
+  { label: 'Facturado hoy', value: money(revenue), tone: 'accent' },
+  { label: 'Mesas activas', value: String(tables.length), tone: 'plain' },
+  { label: 'Platos en carta', value: String(menuItems.length), tone: 'plain' },
+];
+
+const modules = [
+  { href: '/dashboard/tables', icon: '🪑', title: 'Mesas y QR', desc: 'Crea mesas, imprime el QR de cada una y compártelo.' },
+  { href: '/dashboard/orders', icon: '📋', title: 'Pedidos', desc: 'Historial completo de pedidos y su estado.' },
+  { href: '/dashboard/kitchen', icon: '👨‍🍳', title: 'Cocina (KDS)', desc: 'Pantalla de cocina: avanza pedidos en tiempo real.' },
+  { href: '/dashboard/inventory', icon: '📦', title: 'Inventario', desc: 'Insumos, stock bajo y recetas que descuentan al vender.' },
+  { href: '/dashboard/menu', icon: '🍽️', title: 'Menú', desc: 'Carta, precios, categorías y disponibilidad.' },
+  { href: '/dashboard/client', icon: '📱', title: 'Portal cliente', desc: 'La carta que ve el cliente al escanear el QR.' },
+  { href: '/dashboard/analytics', icon: '📊', title: 'Analítica', desc: 'Ventas, platos top y predicciones de inventario.' },
+  { href: '/dashboard/settings', icon: '⚙️', title: 'Configuración', desc: 'Datos del negocio, usuarios y plan.' },
+];
+---
+
+<BaseLayout showNav title="Panel — Fi'ze" currentPath="/dashboard">
+  <main class="dash">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/">← Inicio</a>
+      <span>/</span>
+      <span>Panel</span>
+    </nav>
+
+    <header class="hero">
+      <h1>Panel del restaurante</h1>
+      <p class="hero-sub">
+        Todo lo que pasa en tu cocina, en vivo. Si un pedido no aparece, el
+        cliente no pudo ordering — revisa las mesas y sus QR.
+      </p>
+    </header>
+
+    <section class="kpis" aria-label="Indicadores del día">
+      {kpis.map((k) => (
+        <article class:list={['kpi', k.tone]}>
+          <span class="kpi-label">{k.label}</span>
+          <strong class="kpi-value">{k.value}</strong>
+        </article>
+      ))}
+    </section>
+
+    {
+      lowStock.length > 0 && (
+        <aside class="alert" role="status">
+          <strong>⚠️ {lowStock.length} insumo(s) en stock bajo:</strong>{' '}
+          {lowStock.slice(0, 4).map((i) => String((i as any).name)).join(', ')}
+          {lowStock.length > 4 ? '…' : ''}
+        </aside>
+      )
+    }
+
+    <section class="modules" aria-label="Módulos">
+      {
+        modules.map((m) => (
+          <a class="module" href={m.href}>
+            <span class="module-icon" aria-hidden="true">{m.icon}</span>
+            <span class="module-body">
+              <strong>{m.title}</strong>
+              <span class="module-desc">{m.desc}</span>
+            </span>
+            <span class="module-go" aria-hidden="true">→</span>
+          </a>
+        ))
+      }
+    </section>
+  </main>
+</BaseLayout>
+
+<style>
+  .dash {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2rem 1rem 3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    opacity: 0.7;
+  }
+  .crumbs a { color: inherit; }
+  .hero h1 { font-size: 1.75rem; margin: 0 0 0.35rem; }
+  .hero-sub { margin: 0; opacity: 0.75; max-width: 60ch; line-height: 1.5; }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.85rem;
+  }
+  .kpi {
+    background: color-mix(in srgb, var(--swal-surface, #111827) 90%, transparent);
+    border: 1px solid var(--swal-border, #1e293b);
+    border-radius: 0.85rem;
+    padding: 0.95rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .kpi-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.65; }
+  .kpi-value { font-size: 1.5rem; font-weight: 700; }
+  /* Los tres KPI llevan un color de estado. Antes eran literales del tema
+     anterior: cyan var(--swal-accent), ambar var(--swal-warning) y verde neon var(--swal-success). Bone no tiene
+     color de marca — el acento ES el texto — pero si un color semantico por
+     estado, y es justo para esto: un punto de color en una superficie neutra.
+     El acento del KPI "principal" lo pone el tema, no el componente. */
+  .kpi.accent .kpi-value { color: var(--swal-accent, #1c1917); }
+  .kpi.warn .kpi-value { color: var(--swal-warning, #b45309); }
+  .kpi.ok .kpi-value { color: var(--swal-success, #047857); }
+
+  .alert {
+    background: rgba(251, 191, 36, 0.12);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: 0.7rem;
+    padding: 0.8rem 1rem;
+    font-size: 0.9rem;
+  }
+
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.85rem;
+  }
+  .module {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1rem;
+    border: 1px solid var(--swal-border, rgba(231, 229, 228, 0.8));
+    border-radius: 0.85rem;
+    color: inherit;
+    text-decoration: none;
+    background: var(--swal-surface, rgba(255, 255, 255, 0.9));
+    /* SIN transicion de border-color: el valor viene de var(--swal-accent), que
+       cambia con el tema. Una transicion sobre una propiedad que depende de un
+       token variable se re-dispara en bucle al cambiar de tema: se acumulaban
+       32 transiciones vivas en el dashboard y, mientras estan en vuelo, el color
+       computado de los nav-items devolvia el valor viejo. Medido: 40
+       animaciones permanentes. El transform si se anima — no depende del tema. */
+    transition: transform 0.15s ease;
+  }
+  .module:hover { border-color: var(--swal-accent, #1c1917); transform: translateY(-1px); }
+  .module-icon { font-size: 1.6rem; }
+  .module-body { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; }
+  .module-desc { font-size: 0.82rem; opacity: 0.7; }
+  .module-go { opacity: 0.5; }
+</style>

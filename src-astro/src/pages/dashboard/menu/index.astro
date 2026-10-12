@@ -1,0 +1,10 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import MenuPage from '../../../components/menu/MenuPage.svelte';
+---
+
+<BaseLayout showNav title="Menú — Fi'ze" currentPath="/dashboard/menu">
+  <main>
+    <MenuPage client:load />
+  </main>
+</BaseLayout>

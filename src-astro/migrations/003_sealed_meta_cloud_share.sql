@@ -1,0 +1,13 @@
+-- Share de la nube (x=3, o todos en serverReadable) dentro de la fila sealed_meta.
+-- Antes iba a KV (1 escritura por create/update/delete; KV free = 1000 escrituras/dia para TODA la cuenta).
+-- Ahora va en la misma sentencia D1 que el registro: 0 escrituras KV por registro.
+-- Lectura con fallback a KV mientras cloud_share sea NULL (registros legacy; migracion perezosa).
+--
+-- La columna `cloud_share` ya la crea 001_vault.sql (antes 001_billing.sql), asi que con `wrangler d1 migrations apply` este
+-- archivo no hace nada. Antes era `ALTER TABLE sealed_meta ADD COLUMN cloud_share TEXT;`, que NO es
+-- idempotente: en una base vacia donde el Worker creo `sealed_meta` (ensureSchema ya trae cloud_share)
+-- antes de migrar, el ALTER fallaba con "duplicate column name" y 004/005 no llegaban a aplicarse.
+--
+-- Solo para una base creada con el 001 viejo (sin la columna) y sin registro en d1_migrations:
+--   npx wrangler d1 execute <db> --remote --command "ALTER TABLE sealed_meta ADD COLUMN cloud_share TEXT;"
+-- (si la columna ya existe, el error "duplicate column" es inocuo).
