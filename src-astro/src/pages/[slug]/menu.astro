@@ -13,7 +13,6 @@ import { createStorageAdapter } from '../../lib/storageAdapter';
 import { domainConfig } from '../../lib/domain.config';
 import { loadMenuBySlug } from '../../lib/publicMenuBySlug';
 import { loadMenuForPublicPage, sanitizeMesa } from '../../lib/publicMenuSnapshot';
-import { publicMenuUnavailableHtml } from '../../lib/publicMenuUnavailable';
 import { getWorkerBindings, getWorkerCache } from '../../lib/workerBindings';
 
 const { slug } = Astro.params;
@@ -67,5 +66,25 @@ const base = import.meta.env.PUBLIC_BASE_URL?.replace(/\/$/, '') ?? Astro.url.or
     />
   </BaseLayout>
 ) : (
-  <Fragment set:html={publicMenuUnavailableHtml(slug)} />
+  <html lang="es">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Esta carta todavía no está publicada — Fi'ze</title>
+    </head>
+    <body style="font-family: system-ui; background: #0a0a0a; color: #eee; display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 1.5rem; text-align: center;">
+      <main style="max-width: 28rem;">
+        <h1 style="font-size: 1.4rem; margin: 0 0 .75rem;">Esta carta todavía no está publicada</h1>
+        <p style="opacity: .75; line-height: 1.5; margin: 0 0 .75rem;">
+          Si eres el dueño: entra a tu panel de Fi'ze y publica la carta desde <strong><a href="/local/publicar/" style="color: #4ade80; text-decoration: none;">Publicar</a></strong>. Hasta entonces nadie puede verla.
+        </p>
+        <p style="opacity: .75; line-height: 1.5; margin: 0 0 1rem;">
+          Si ya la publicaste, revisa el enlace (para este local es <code>/{slug}/menu</code>) o vuelve a escanear el código QR de la mesa.
+        </p>
+        <p style="opacity: .55; font-size: .85rem; margin: 0;">
+          La carta se publica desde este equipo, sin cuenta: se necesita conexión solo en ese momento.
+        </p>
+      </main>
+    </body>
+  </html>
 )}
