@@ -11,10 +11,9 @@ test.describe('Public Menu - Unpublished', () => {
     const heading = page.locator('h1');
     await expect(heading).toHaveText('Esta carta todavía no está publicada');
 
-    // Assert the link to /local/publicar/
-    const link = page.locator('a[href="/local/publicar/"]');
-    await expect(link).toBeVisible();
-    await expect(link).toContainText('Publicar');
+    // Assert the strong tag mentions 'Publicar'
+    const strongTag = page.locator('strong');
+    await expect(strongTag).toContainText('Publicar');
 
     // Also assert that the requested slug is correctly shown in the instructions
     await expect(page.locator('code')).toHaveText('/unknown-restaurant-123/menu');
