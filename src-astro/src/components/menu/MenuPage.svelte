@@ -92,6 +92,34 @@
     }
   }
 
+  async function handleDeleteMenuItem(id: string) {
+    errorMessage = null;
+    if (!globalThis.confirm?.('¿Eliminar este artículo?')) return;
+
+    // Find the item to determine its category before it is deleted
+    const itemToDelete = menuItems.find(m => m.id === id);
+    const categoryId = itemToDelete?.categoryId;
+
+    try {
+      await deleteMenuItemApi(id);
+      deleteMenuItem(id);
+
+      // Accessibility: return focus to a sensible place
+      setTimeout(() => {
+        if (categoryId) {
+          const categoryHeading = document.getElementById(`cat-${categoryId}`);
+          if (categoryHeading) categoryHeading.focus();
+          else {
+            const heading = document.getElementById('items-heading');
+            if (heading) heading.focus();
+          }
+        }
+      }, 0);
+    } catch (err) {
+      errorMessage = (err as Error).message || 'Error al eliminar artículo';
+    }
+  }
+
   async function handleToggleItem(id: string) {
     errorMessage = null;
     const item = menuItems.find(m => m.id === id);
@@ -221,7 +249,7 @@
 
     <section class="section" aria-labelledby="items-heading">
       <div class="section-header">
-        <h2 class="section-title" id="items-heading">Artículos</h2>
+        <h2 class="section-title" id="items-heading" tabindex="-1">Artículos</h2>
         <span class="item-count">{menuItems.length} artículos</span>
       </div>
       <div class="category-groups">
@@ -229,13 +257,14 @@
           {@const catItems = menuItems.filter(m => m.categoryId === cat.id)}
           {#if catItems.length > 0}
             <div class="category-group">
-              <h3 class="group-title">{cat.name}</h3>
+              <h3 class="group-title" id={`cat-${cat.id}`} tabindex="-1">{cat.name}</h3>
               <div class="items-grid">
                 {#each catItems as item (item.id)}
                   <MenuItemCard
                     {item}
                     onEdit={handleEditItem}
                     onToggle={handleToggleItem}
+                    onDelete={handleDeleteMenuItem}
                   />
                 {/each}
               </div>

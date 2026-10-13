@@ -26,6 +26,7 @@
 
   let unsub: (() => void) | null = null;
   let pollHandle: ReturnType<typeof setInterval> | null = null;
+  let demoNotice = $state<string>('');
 
   // Mesas del local: `order.tableId` es un id interno y el personal necesita el numero
   // (QA pre-entrega 2026-10-13 #3: la tarjeta decia «Mesa mv6j956n-5ct119»).
@@ -182,15 +183,21 @@
     // las transiciones y el cobro, nunca 404). Sin la bandera no hay opt-in
     // implicito que valga: resembrar en cada cola vacia (inicio del dia, tras
     // cobrar todo) contaminaba ventas/historial una vez cobrados.
+    const hasDemoFlag = isDemoFlaggedUrl();
+    const isLocal = isLocalMode();
+    if (isLocal && hasDemoFlag && orders.list.length > 0) {
+      demoNotice = "La demo solo se carga con la cocina vacía";
+    }
+
     if (
       shouldSeedKdsDemo({
         autoPublish,
         orderCount: orders.list.length,
-        localMode: isLocalMode(),
-        demoFlag: isDemoFlaggedUrl(),
+        localMode: isLocal,
+        demoFlag: hasDemoFlag,
       })
     ) {
-      if (isLocalMode()) {
+      if (isLocal) {
         await seedLocalDemoOrders();
       } else {
         const demo = demoSeed();
@@ -375,6 +382,9 @@
 </script>
 
 <section class="kds-queue">
+  {#if demoNotice}
+    <div class="demo-notice" role="alert">{demoNotice}</div>
+  {/if}
   <header class="kds-header">
     <h2>🍳 Cocina — pedidos en vivo</h2>
     <div class="counters" aria-label="Contadores KDS">
@@ -423,6 +433,16 @@
     margin: 0;
     color: var(--swal-text);
     font-size: 1.25rem;
+  }
+  .demo-notice {
+    background: var(--swal-warning-muted, rgba(234, 179, 8, 0.15));
+    border: 1px solid var(--swal-warning, #eab308);
+    color: var(--swal-warning, #eab308);
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-align: center;
   }
   .counters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
   .counter {

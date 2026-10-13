@@ -97,7 +97,7 @@ LEAKS="${LEAKS_SCANNER:-gitleaks}"
 if command -v "$LEAKS" >/dev/null 2>&1; then
   COPY="$(mktemp -d)"
   tar -cf - -T "$FILES" | tar -xf - -C "$COPY"
-  if "$LEAKS" dir "$COPY" --no-banner --no-color --redact -v >/tmp/fize-gitleaks.$$ 2>&1; then
+  if "$LEAKS" detect --no-git --source "$COPY" --no-banner --no-color --redact -v >/tmp/fize-gitleaks.$$ 2>&1; then
     echo "  [OK] gitleaks: sin hallazgos"
   else
     sed "s#$COPY/##g" /tmp/fize-gitleaks.$$ | tail -40
