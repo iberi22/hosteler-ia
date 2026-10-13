@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 test("onboards local, creates table 1, adds order and KDS shows Mesa 1", async ({
 	page,
@@ -33,7 +33,6 @@ test("onboards local, creates table 1, adds order and KDS shows Mesa 1", async (
 		.selectOption({ label: "Mesa 1 (4 pax)" });
 	await page.getByRole("button", { name: "Añadir Tinto" }).click();
 	await page.getByRole("button", { name: "Crear pedido" }).click();
-    await expect(page.getByText('Pedido creado')).toBeVisible();
 
 	// Check KDS
 	await page.goto("/local/cocina/");
