@@ -1,4 +1,48 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+// Onboarding hasta el paso 4 (mismo recorrido que e2e/local-table-qr.spec.ts): deja creada la identidad
+// del local en `fize-local`, sin la cual el modo local responde 409.
+async function onboardLocal(page: Page) {
+  await page.goto('/local/');
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await page.getByLabel('Nombre del negocio').fill('Doña Rosa');
+  await page.getByLabel('WhatsApp para pedidos').fill('300 123 4567');
+  await page.getByLabel('Dirección').fill('Cra 15 # 85-20, Bogotá');
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(page.getByTestId('paso')).toHaveText('Paso 4 de 6');
+}
+
+// Siembra un registro en `fize-db` (un store por entidad, ver src-astro/src/lib/idbAdapter.ts) con el
+// `instance_id` de la identidad real del equipo. Así la UI lo lee como cualquier dato guardado.
+async function seedLocal(page: Page, store: 'category' | 'menuItem' | 'order', record: Record<string, unknown>) {
+  await page.evaluate(
+    async ({ store, record }) => {
+      const openDb = (name: string) =>
+        new Promise<IDBDatabase>((resolve, reject) => {
+          const req = indexedDB.open(name);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      const kv = await openDb('fize-local');
+      const identity = await new Promise<{ instanceId: string }>((resolve, reject) => {
+        const req = kv.transaction('kv').objectStore('kv').get('identity');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      kv.close();
+      const db = await openDb('fize-db');
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put({ ...record, instance_id: identity.instanceId });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    },
+    { store, record },
+  );
+}
 
 test.describe('Local mode polish QA fixes', () => {
   test('header and banner do not scroll away when overflow-x is clip', async ({ page }) => {
@@ -32,77 +76,36 @@ test.describe('Local mode polish QA fixes', () => {
   });
 
   test('cocina queue with ?demo=1 shows notice if not empty and does not seed', async ({ page }) => {
-    // Add a fake order to IndexedDB to simulate a non-empty queue
-    await page.goto('/local/');
-    await page.evaluate(async () => {
-      return new Promise<void>((resolve, reject) => {
-        const req = indexedDB.open('hosteler_ia_local', 2);
-        req.onupgradeneeded = () => {
-           req.result.createObjectStore('orders', { keyPath: 'id' });
-        };
-        req.onsuccess = () => {
-          const db = req.result;
-          if (!db.objectStoreNames.contains('orders')) { resolve(); return; }
-          const tx = db.transaction('orders', 'readwrite');
-          const store = tx.objectStore('orders');
-          store.put({
-            id: 'mock-order-1',
-            type: 'order',
-            status: 'pending',
-            tableId: '1',
-            totalAmount: 1000,
-            items: [],
-            created_at: new Date().toISOString()
-          });
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        };
-      });
+    await onboardLocal(page);
+    // Una comanda real en la cola: con ?demo=1 la cocina debe avisar y NO sembrar la demo encima.
+    await seedLocal(page, 'order', {
+      id: 'mock-order-1',
+      tableId: '',
+      status: 'pending',
+      items: [],
+      totalAmount: 1000,
+      created_at: new Date().toISOString(),
     });
 
     await page.goto('/local/cocina/?demo=1');
 
-    // It should display the notice
     const notice = page.locator('.demo-notice');
     await expect(notice).toHaveText('La demo solo se carga con la cocina vacía');
   });
 
   test('menu editor can delete an item', async ({ page }) => {
-    // We first need to mock/add a menu item to the local IDB, or do the onboarding and add one.
-    // Instead of doing onboarding, let's inject a mock item to the DB, or try to navigate and use the store if possible.
-    // Easiest is to go to /local/carta/, which might show a blank list if not onboarded, but menu is there.
-    // It's a prerendered static page with client side IDB logic. We can mock an item in IDB.
-    await page.goto('/local/carta/');
-    await page.evaluate(async () => {
-      return new Promise<void>((resolve, reject) => {
-        const req = indexedDB.open('hosteler_ia_local', 2);
-        req.onupgradeneeded = () => {
-           if (!req.result.objectStoreNames.contains('menu-items')) {
-             req.result.createObjectStore('menu-items', { keyPath: 'id' });
-           }
-        };
-        req.onsuccess = () => {
-          const db = req.result;
-          if (!db.objectStoreNames.contains('menu-items')) { resolve(); return; }
-          const tx = db.transaction('menu-items', 'readwrite');
-          const store = tx.objectStore('menu-items');
-          store.put({
-            id: 'mock-item-1',
-            type: 'menu-item',
-            name: 'Plato para eliminar',
-            price: 5000,
-            categoryId: 'mock-cat',
-            isAvailable: true,
-            created_at: new Date().toISOString()
-          });
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => reject(tx.error);
-        };
-      });
+    await onboardLocal(page);
+    await seedLocal(page, 'category', { id: 'mock-cat', name: 'Entradas', description: '', created_at: new Date().toISOString() });
+    await seedLocal(page, 'menuItem', {
+      id: 'mock-item-1',
+      name: 'Plato para eliminar',
+      price: 5000,
+      categoryId: 'mock-cat',
+      isAvailable: true,
+      created_at: new Date().toISOString(),
     });
 
-    // Reload to see the mocked item
-    await page.reload();
+    await page.goto('/local/carta/');
 
     const deleteBtn = page.getByRole('button', { name: 'Eliminar' }).first();
     await expect(deleteBtn).toBeVisible();
