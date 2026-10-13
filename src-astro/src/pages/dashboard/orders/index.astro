@@ -59,11 +59,13 @@ const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=
 
     <KitchenQueue client:load autoPublish={false} statuses={laneStatuses} />
 
-    <Card variant="elevated" padding="md">
-      <h2>API de Pedidos</h2>
-      <p class="hint">Endpoint REST consumido por el KDS y el dashboard.</p>
-      <pre class="endpoint"><code>GET {apiEndpointUrl}</code></pre>
-    </Card>
+    {import.meta.env.DEV && (
+      <Card variant="elevated" padding="md">
+        <h2>API de Pedidos</h2>
+        <p class="hint">Endpoint REST consumido por el KDS y el dashboard.</p>
+        <pre class="endpoint"><code>GET {apiEndpointUrl}</code></pre>
+      </Card>
+    )}
   </main>
 </BaseLayout>
 
