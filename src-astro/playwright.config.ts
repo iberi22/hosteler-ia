@@ -31,7 +31,8 @@ export default defineConfig({
   webServer: {
     // Puerto dedicado de Fi'ze: 4321 lo ocupa gara-g (dev) y reuseExisting
     // testeaba LA APP EQUIVOCADA en silencio. false = falla ruidoso si hay ocupacion.
-    command: 'npx astro preview --port 4331',
+    // Astro 7 detecta shells de agente y manda preview a segundo plano; Playwright necesita un proceso en primer plano.
+    command: 'pnpm exec astro preview --port 4331 --ignore-lock',
     url: 'http://localhost:4331',
     reuseExistingServer: false,
     timeout: 120 * 1000,

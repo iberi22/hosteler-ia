@@ -8,9 +8,10 @@
     item: MenuItem;
     onEdit?: (item: MenuItem) => void;
     onToggle?: (id: string) => void;
+    onDelete?: (id: string) => void;
   }
 
-  let { item, onEdit, onToggle }: Props = $props();
+  let { item, onEdit, onToggle, onDelete }: Props = $props();
 
   const recipe = $derived<RecipeLine[]>(
     Array.isArray((item as Record<string, unknown>).recipe)
@@ -69,6 +70,11 @@
       <button class="action-btn" onclick={() => onEdit?.(item)} title="Editar" aria-label="Editar">
         <span aria-hidden="true">✎</span>
       </button>
+      {#if onDelete}
+        <button class="action-btn danger-btn" onclick={() => onDelete(item.id)} title="Eliminar" aria-label="Eliminar">
+          <span aria-hidden="true">🗑️</span>
+        </button>
+      {/if}
     </div>
   </div>
 </article>
@@ -211,5 +217,10 @@
   .action-btn:hover {
     color: var(--swal-text, #e2e8f0);
     background: var(--swal-hover-bg, rgba(255,255,255,0.06));
+  }
+
+  .danger-btn:hover {
+    color: var(--swal-danger, #f87171);
+    background: rgba(248,113,113,0.1);
   }
 </style>
