@@ -5,7 +5,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { themeBootScript } from "@swal/ui/theme-boot";
-import { NET_BANNER_SCRIPT, OFFLINE_RETRY_SCRIPT } from "./src/lib/inlineScripts";
+import { NET_BANNER_SCRIPT, OFFLINE_RETRY_SCRIPT, PEDIDOS_FILTER_SCRIPT } from "./src/lib/inlineScripts";
 import { existsSync } from "node:fs";
 import { cloudAlias, CLOUD_DEDUPE, resolveCloud } from "./cloud.config.mjs";
 
@@ -69,6 +69,8 @@ const CSP_SCRIPT_HASHES = [
   // Aviso de red del modo local (LocalLayout) y reintento de la pantalla /offline.
   sha256(NET_BANNER_SCRIPT),
   sha256(OFFLINE_RETRY_SCRIPT),
+  // Chip activo del filtro de /local/pedidos (pagina prerenderizada, QA #6).
+  sha256(PEDIDOS_FILTER_SCRIPT),
 ];
 
 // Modo local (docs/producto/NODO-LOCAL.md §2.2): los handlers de src/pages/api/* tambien corren en el

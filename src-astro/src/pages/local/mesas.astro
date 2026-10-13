@@ -8,7 +8,9 @@ export const prerender = true;
   <div class="page">
     <h1 class="title">Mesas</h1>
     <p class="sub">Gestión de mesas y códigos QR de pedido</p>
-    <TableMap client:load newOrderBase="/local/nuevo-pedido/" />
+    <!-- El dashboard (`/dashboard/tables`) conserva la hoja imprimible con sesion; en modo local se
+         pasa `/local/publicar/`: `/dashboard/tables/print` pide sesion y termina en /login (#2). -->
+    <TableMap client:load newOrderBase="/local/nuevo-pedido/" printHref="/local/publicar/" printLabel="Ver QR para imprimir" />
   </div>
 </LocalLayout>
 

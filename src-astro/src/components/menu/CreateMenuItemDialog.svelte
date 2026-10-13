@@ -4,6 +4,12 @@
   import type { MenuItem, MenuCategory } from '../../stores/menu.svelte';
   import type { RecipeLine } from '../../lib/recipes';
   import { apiFetch } from '../../lib/api-client';
+  // Un solo parser de precios para toda la app: "38.000" son 38.000 pesos, no 38
+  // (QA pre-entrega 2026-10-13 #1: `parseFloat` guardaba el plato 1000x mas barato).
+  import { parseCopPrice } from '../../lib/copPrice';
+  import { formatPlain } from '../../lib/money';
+  // Trampa de foco del dialogo (QA #14): Tab no debe salir a las tarjetas de atras.
+  import { focusFirst, trapTabKey } from '../../lib/focusTrap';
 
   interface InventoryItem {
     id: string;
@@ -28,7 +34,9 @@
   let sku = $state(initialItem?.sku ?? '');
   let name = $state(initialItem?.name ?? '');
   let description = $state(initialItem?.description ?? '');
-  let priceStr = $state(initialItem?.price?.toString() ?? '');
+  // `formatPlain` y no `toString()`: al editar 38000 el campo muestra "38.000",
+  // que es lo que el duenno reconoce como precio en pesos.
+  let priceStr = $state(initialItem?.price != null ? formatPlain(initialItem.price) : '');
   let categoryId = $state(initialItem?.categoryId ?? categories[0]?.id ?? '');
   let tagsStr = $state(initialItem?.tags?.join(', ') ?? '');
   let isAvailable = $state(initialItem?.isAvailable ?? true);
@@ -79,8 +87,9 @@
     const e: Record<string, string> = {};
     if (!sku.trim()) e.sku = 'SKU requerido';
     if (!name.trim()) e.name = 'Nombre requerido';
-    const price = parseFloat(priceStr);
-    if (isNaN(price) || price <= 0) e.price = 'Precio debe ser > 0';
+    const price = parseCopPrice(priceStr);
+    if (price === null) e.price = 'Escribe el precio en pesos, por ejemplo 38.000';
+    else if (price <= 0) e.price = 'Precio debe ser > 0';
     if (!categoryId) e.categoryId = 'Categoría requerida';
 
     const seenIds = new Set<string>();
@@ -114,7 +123,7 @@
         sku: sku.trim(),
         name: name.trim(),
         description: description.trim() || undefined,
-        price: parseFloat(priceStr),
+        price: parseCopPrice(priceStr) ?? 0,
         categoryId,
         tags: tagsStr.split(',').map(t => t.trim()).filter(Boolean),
         isAvailable,
@@ -128,11 +137,31 @@
   function handleBackdropClick(e: MouseEvent) {
     if ((e.target as HTMLElement).classList.contains('dialog-backdrop')) onClose();
   }
+
+  let panel = $state<HTMLElement | null>(null);
+
+  // El dialogo se abre por encima de la lista, pero el foco se quedaba en las
+  // tarjetas de atras: los 3 primeros Tab recorrian la pagina (QA #14). Al montar
+  // se lleva el foco al dialogo y Tab cicla dentro; al cerrar vuelve al sitio de antes.
+  onMount(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    queueMicrotask(() => panel && focusFirst(panel));
+    return () => previous?.focus?.();
+  });
+
+  function onPanelKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+    if (panel) trapTabKey(panel, e);
+  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div class="dialog-backdrop" onclick={handleBackdropClick} role="dialog" aria-modal="true" aria-label="Crear artículo de menú">
-  <div class="dialog-panel">
+  <div class="dialog-panel" bind:this={panel} onkeydown={onPanelKeydown}>
     <header class="dialog-header">
       <h2 class="dialog-title">{initialItem ? 'Editar' : 'Nuevo'} artículo</h2>
       <button class="close-btn" onclick={onClose} aria-label="Cerrar">✕</button>
@@ -160,7 +189,22 @@
       <div class="form-row">
         <div class="field">
           <label class="field-label" for="price">Precio (COP) *</label>
-          <input id="price" class="field-input" class:error={errors.price} type="number" step="0.01" min="0" bind:value={priceStr} placeholder="12.50" />
+          <!-- type=number + step=1 (pesos enteros) y `oninput` en vez de `bind:value`:
+               Svelte convierte a numero los input[type=number], y "38.000" quedaria en 38
+               antes de que el parser lo vea. `inputmode=numeric` abre el teclado numerico. -->
+          <input
+            id="price"
+            class="field-input"
+            class:error={errors.price}
+            type="number"
+            step="1"
+            min="0"
+            inputmode="numeric"
+            autocomplete="off"
+            value={priceStr}
+            oninput={(e) => (priceStr = e.currentTarget.value)}
+            placeholder="38.000"
+          />
           {#if errors.price}<span class="field-error">{errors.price}</span>{/if}
         </div>
         <div class="field">

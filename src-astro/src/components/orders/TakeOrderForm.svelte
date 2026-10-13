@@ -147,7 +147,7 @@
     <div class="success" role="status">
       <p class="success-title">Pedido creado</p>
       <p class="success-detail">
-        {#if created.tableNumber !== null}Mesa {created.tableNumber} · {/if}Total {formatCOP(created.total)} · pendiente en cocina
+        {created.tableNumber !== null ? `Mesa ${created.tableNumber} · ` : ''}Total {formatCOP(created.total)} · pendiente en cocina
       </p>
       <div class="success-actions">
         <Button variant="primary" href="{base}/pedidos/">Ver en pedidos</Button>

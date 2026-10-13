@@ -62,10 +62,13 @@
         class="action-btn"
         onclick={() => onToggle?.(item.id)}
         title={item.isAvailable ? 'Marcar agotado' : 'Marcar disponible'}
+        aria-label={item.isAvailable ? 'Marcar agotado' : 'Marcar disponible'}
       >
-        {item.isAvailable ? '◉' : '◎'}
+        <span aria-hidden="true">{item.isAvailable ? '◉' : '◎'}</span>
       </button>
-      <button class="action-btn" onclick={() => onEdit?.(item)} title="Editar">✎</button>
+      <button class="action-btn" onclick={() => onEdit?.(item)} title="Editar" aria-label="Editar">
+        <span aria-hidden="true">✎</span>
+      </button>
     </div>
   </div>
 </article>

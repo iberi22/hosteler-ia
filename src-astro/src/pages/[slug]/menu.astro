@@ -13,6 +13,7 @@ import { createStorageAdapter } from '../../lib/storageAdapter';
 import { domainConfig } from '../../lib/domain.config';
 import { loadMenuBySlug } from '../../lib/publicMenuBySlug';
 import { loadMenuForPublicPage, sanitizeMesa } from '../../lib/publicMenuSnapshot';
+import { publicMenuUnavailableHtml } from '../../lib/publicMenuUnavailable';
 import { getWorkerBindings, getWorkerCache } from '../../lib/workerBindings';
 
 const { slug } = Astro.params;
@@ -30,35 +31,41 @@ const loaded = await loadMenuForPublicPage({
   cache: getWorkerCache(),
   loadFromAdapter: () => loadMenuBySlug(createStorageAdapter(Astro.locals), instanceId, slug),
 });
-const menu = loaded?.menu;
+const menu = loaded?.menu ?? null;
 const mesa = sanitizeMesa(Astro.url.searchParams.get('mesa'));
 
-if (!loaded || !menu) {
-  return new Response(
-    `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Carta no encontrada — Fi'ze</title></head>` +
-      `<body style="font-family:system-ui;background:#0a0a0a;color:#eee;display:grid;place-items:center;height:100vh;margin:0">` +
-      `<div style="text-align:center"><h1 style="font-size:1.4rem">No encontramos esa carta</h1>` +
-      `<p style="opacity:.7">Revisa el enlace o escanea el codigo QR de la mesa.</p></div></body></html>`,
-    { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
-  );
-}
+// La carta que no existe sigue siendo un 404, pero con el aviso amable que /local/publicar le
+// promete al duenno («Esta carta todavía no está publicada», QA pre-entrega 2026-10-13 #5).
+// El estado se fija aqui y el cuerpo se elige en la plantilla: un `return` dentro del `if`
+// hacia que `astro check` no contara la referencia a `publicMenuUnavailableHtml` (import marcado
+// como no usado). Con SSR el estado de `Astro.response` es el que viaja al comensal.
+const faltaCarta = !menu;
+if (faltaCarta) Astro.response.status = 404;
 
-const fromCloud = loaded.source === 'cloud';
+const fromCloud = loaded?.source === 'cloud';
 const base = import.meta.env.PUBLIC_BASE_URL?.replace(/\/$/, '') ?? Astro.url.origin;
 ---
 
-<BaseLayout title={`${menu.restaurant.name} — Carta`} currentPath={`/${menu.restaurant.slug || slug}/menu`} showNav={false}>
-  <PublicMenu
-    client:load
-    instanceId={instanceId}
-    restaurantId={menu.restaurant.id}
-    restaurantName={menu.restaurant.name}
-    categories={menu.categories}
-    items={menu.items}
-    storeSlug={menu.restaurant.slug || slug}
-    restaurantPhone={menu.restaurant.phone ?? ''}
-    baseUrl={base}
-    tableLabel={mesa}
-    loadNutrition={fromCloud}
-  />
-</BaseLayout>
+{menu ? (
+  <BaseLayout
+    title={`${menu.restaurant.name} — Carta`}
+    currentPath={`/${menu.restaurant.slug || slug}/menu`}
+    showNav={false}
+  >
+    <PublicMenu
+      client:load
+      instanceId={instanceId}
+      restaurantId={menu.restaurant.id}
+      restaurantName={menu.restaurant.name}
+      categories={menu.categories}
+      items={menu.items}
+      storeSlug={menu.restaurant.slug || slug}
+      restaurantPhone={menu.restaurant.phone ?? ''}
+      baseUrl={base}
+      tableLabel={mesa}
+      loadNutrition={fromCloud}
+    />
+  </BaseLayout>
+) : (
+  <Fragment set:html={publicMenuUnavailableHtml(slug)} />
+)}

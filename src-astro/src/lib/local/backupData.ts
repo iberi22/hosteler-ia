@@ -28,6 +28,15 @@ function entities(): string[] {
   return domainConfig.entities.map((e) => e.name);
 }
 
+/**
+ * Filas que cuentan para el resumen: las borradas en logico (`deleted_at`) no se le muestran
+ * al duenno. QA pre-entrega 2026-10-13 #12: la restauracion decia «4 platos» con 3 platos
+ * vivos, porque contaba tambien la fila borrada.
+ */
+export function countAliveRows(rows: readonly DomainRecord[]): number {
+  return rows.filter((r) => r && typeof r === 'object' && !(r as Record<string, unknown>).deleted_at).length;
+}
+
 export async function collectBackup(storage: StorageAdapter = getIdbAdapter()): Promise<PlainBackup> {
   const identity = await loadIdentity();
   if (!identity) throw new Error('Este equipo todavía no tiene un local configurado: no hay nada que copiar.');
@@ -188,7 +197,7 @@ export async function restoreBackup(text: string, code: string, opts: RestoreOpt
   const counts: Record<string, number> = {};
   for (const entity of entities()) {
     rows[entity] = (Object.hasOwn(plain.stores, entity) ? plain.stores[entity] : []) as DomainRecord[];
-    counts[entity] = rows[entity].length;
+    counts[entity] = countAliveRows(rows[entity]);
   }
   for (const name of Object.keys(plain.stores)) if (!Object.hasOwn(counts, name)) counts[name] = 0;
 

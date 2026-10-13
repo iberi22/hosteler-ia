@@ -66,4 +66,16 @@ test('duena en /local/ publica su carta y el comensal pide desde /<slug>/menu?me
   expect(href).toMatch(/mesa 2/i);
   expect(href).toContain('Cuy asado');
   expect(href).toContain('45.000');
+
+  // #4 (publicado): el QR de la mesa de /local/mesas usa el enlace publico con ?mesa=N,
+  // el unico que el comensal puede abrir desde su celular.
+  await page.goto('/local/mesas/');
+  await page.getByPlaceholder('Nº de Mesa').fill('1');
+  await page.getByPlaceholder('Capacidad (pax)').fill('4');
+  await page.getByRole('button', { name: 'Añadir Mesa' }).click();
+  await expect(page.getByText('Mesa 1')).toBeVisible();
+  await page.locator('.table-card').first().click();
+  const qrModal = page.getByRole('dialog', { name: 'Mesa 1 — QR' });
+  await expect(qrModal).toBeVisible();
+  await expect(qrModal.getByText(`https://fize.swal.network/${slug}/menu?mesa=1`)).toBeVisible();
 });

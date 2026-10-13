@@ -173,6 +173,18 @@ test('nodo local: onboarding, carta sin red, copia cifrada y restauración', asy
   expect(errors, 'sin errores en consola en /local/*').toEqual([]);
 });
 
+// QA pre-entrega 2026-10-13 #5: antes de publicar, el comensal veia un 404 en crudo («No encontramos
+// esa carta») mientras /local/publicar le prometia al duenno «Esta carta todavía no está publicada».
+test('carta no publicada: aviso amable (404) en vez de un 404 en crudo', async ({ request }) => {
+  // Slug que nadie publico en esta corrida: no hay instantanea en R2 ni restaurante en la nube.
+  const slug = `sin-publicar-${Date.now().toString(36)}`;
+  const res = await request.get(`/${slug}/menu`);
+  expect(res.status()).toBe(404);
+  const body = await res.text();
+  expect(body).toContain('Esta carta todavía no está publicada');
+  expect(body).not.toContain('No encontramos esa carta');
+});
+
 // Copia de OTRO local (auditoria local-node B1): aviso con los dos locales, confirmacion escrita y copia de
 // seguridad del local actual antes de reemplazar. En el celular (390×844), que es donde se usa.
 test.describe('copia de otro local', () => {

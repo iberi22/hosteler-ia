@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import { formatCOP } from '../../lib/money';
+  import { parseCopPrice } from '../../lib/copPrice';
   import { api } from '../../lib/api-client';
   import { PAYMENT_METHODS, type PaymentMethod } from '../../lib/payments';
 
@@ -27,8 +28,8 @@
 
   async function confirmPayment() {
     if (isSaving) return;
-    const amount = Number(paymentAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const amount = parseCopPrice(paymentAmount);
+    if (amount === null || amount <= 0) {
       errorMsg = 'El monto debe ser mayor que cero';
       return;
     }
@@ -72,9 +73,9 @@
   <label class="payment-amount">
     <span>Monto cobrado</span>
     <input
-      type="number"
-      min="0"
-      step="1"
+      type="text"
+      inputmode="numeric"
+      autocomplete="off"
       bind:value={paymentAmount}
       placeholder={String(total)}
       aria-label="Monto cobrado"

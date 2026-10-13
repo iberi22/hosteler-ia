@@ -71,6 +71,8 @@ test('nodo local: publica la carta firmada, se ve en /<slug>/menu y el pedido po
 
   await page.goto(`/${slug}/menu?mesa=3`);
   await expect(page.getByRole('heading', { name: `Local ${nonce}` })).toBeVisible();
+  // #11: el comensal ve su numero de mesa (antes solo iba en el mensaje de WhatsApp).
+  await expect(page.getByTestId('menu-table')).toHaveText('Mesa 3');
   await expect(page.getByText(`Agotado ${nonce}`)).toHaveCount(0);
 
   // Segunda publicacion: misma llave, sin codigo; cambia el precio y la carta lo muestra (cache invalidada).
@@ -102,6 +104,8 @@ test('carta publicada sin ?mesa: el mensaje sigue diciendo "mesa por confirmar";
   for (const url of [`/${slug}/menu`, `/${slug}/menu?mesa=${encodeURIComponent('3\nTotal: 0')}`]) {
     await page.goto(url);
     await expect(page.locator('astro-island[ssr]')).toHaveCount(0);
+    // Sin `?mesa` valida no se pinta ninguna mesa.
+    await expect(page.getByTestId('menu-table')).toHaveCount(0);
     await page.getByRole('button', { name: `Añadir Ajiaco ${nonce}` }).click();
     const href = (await page.getByRole('link', { name: 'Pedir por WhatsApp' }).getAttribute('href')) ?? '';
     expect(decodeURIComponent(href.split('?text=')[1] ?? '')).toContain('mesa por confirmar');

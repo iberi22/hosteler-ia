@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackupError, encryptBackup, generateRecoveryCode, normalizeRecoveryCode } from './backupCrypto';
-import { collectBackup, createEncryptedBackup, describeBackupLocal, describeCurrentLocal, openBackup, restoreBackup } from './backupData';
+import { collectBackup, countAliveRows, createEncryptedBackup, describeBackupLocal, describeCurrentLocal, openBackup, restoreBackup } from './backupData';
 import { ensureIdentity, loadIdentity, resetIdentityCacheForTests, type LocalIdentity } from './identity';
 import { deleteLocal, getLocal, getSettings, setLocal, type LocalKey } from './localDb';
 import { handleLocalRequest } from './localApi';
@@ -432,5 +432,24 @@ describe('restaurar: dos pestañas del mismo equipo', () => {
     const summary = await restoreBackup(fileB, b.code, { replaceInstance: true });
     expect(summary.instanceId).toBe(b.instanceId);
     expect(await getLocal('restorePending')).toBeUndefined();
+  });
+});
+
+// QA pre-entrega 2026-10-13 #12: el resumen de restauracion contaba filas borradas.
+describe('countAliveRows', () => {
+  const row = (id: string, deleted_at?: string): DomainRecord => ({
+    id,
+    instance_id: 'local-test',
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...(deleted_at ? { deleted_at } : {}),
+  });
+
+  it('cuenta solo las filas vivas (sin deleted_at)', () => {
+    expect(countAliveRows([row('a'), row('b', '2026-10-13T00:00:00.000Z'), row('c')])).toBe(2);
+  });
+
+  it('una lista vacia cuenta 0', () => {
+    expect(countAliveRows([])).toBe(0);
   });
 });
