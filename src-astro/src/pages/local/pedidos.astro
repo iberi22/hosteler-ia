@@ -4,15 +4,14 @@ import KitchenQueue from "../../components/orders/KitchenQueue.svelte";
 
 export const prerender = true;
 import LocalLayout from "../../layouts/LocalLayout.astro";
-import { isOrderStatus, ORDER_STATUSES, ORDER_STATUS_LABELS } from "../../lib/orderStateMachine";
+import { ORDER_STATUSES, ORDER_STATUS_LABELS } from "../../lib/orderStateMachine";
+import { PEDIDOS_FILTER_SCRIPT } from "../../lib/inlineScripts";
 
-const rawStatus = Astro.url.searchParams.get("status");
-const activeStatus = isOrderStatus(rawStatus) ? rawStatus : null;
-// El KDS filtra sus carriles por estos estados: sin filtro muestra el listado
-// completo (incluye paid/cancelled), con `?status=X` solo ese carril.
-const laneStatuses = activeStatus ? [activeStatus] : [...ORDER_STATUSES];
-
-const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=${activeStatus}` : ""}`;
+// La pagina se prerenderiza: `Astro.url.searchParams` siempre esta vacio en el HTML generado,
+// asi que el filtro NO puede resolverse aqui (QA pre-entrega 2026-10-13 #6: con `?status=paid`
+// el chip activo seguia siendo "Todos"). La pagina pasa todos los carriles y el chip lo marca
+// el script inline; KitchenQueue ya relee `?status=` en el cliente para elegir los carriles.
+const laneStatuses = [...ORDER_STATUSES];
 ---
 
 <LocalLayout title="Pedidos — Fi'ze Dashboard (Local)">
@@ -40,16 +39,14 @@ const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=
       <div class="filter-section">
         <span class="filter-label">Filtrar por estado:</span>
         <div class="chips-container" role="navigation" aria-label="Filtro de estado de pedidos">
-          <a
-            href="/local/pedidos/"
-            class={`chip ${activeStatus === null ? 'active' : ''}`}
-          >
+          <a href="/local/pedidos/" class="chip" data-pedidos-chip="">
             Todos
           </a>
           {ORDER_STATUSES.map((status) => (
             <a
               href={`/local/pedidos/?status=${status}`}
-              class={`chip ${activeStatus === status ? 'active' : ''}`}
+              class="chip"
+              data-pedidos-chip={status}
             >
               {ORDER_STATUS_LABELS[status]}
             </a>
@@ -60,11 +57,8 @@ const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=
 
     <KitchenQueue client:load autoPublish={false} statuses={laneStatuses} />
 
-    <Card variant="elevated" padding="md">
-      <h2>API de Pedidos</h2>
-      <p class="hint">Endpoint REST consumido por el KDS y el dashboard.</p>
-      <pre class="endpoint"><code>GET {apiEndpointUrl}</code></pre>
-    </Card>
+    <!-- Marca el chip activo en el cliente (QA #6): al ir despues de los chips, ya existen en el DOM. -->
+    <script is:inline set:html={PEDIDOS_FILTER_SCRIPT} />
   </main>
 </LocalLayout>
 
@@ -144,16 +138,4 @@ const apiEndpointUrl = `${Astro.url.origin}/api/orders${activeStatus ? `?status=
     border-color: var(--swal-accent-cyan);
     font-weight: 700;
   }
-  .endpoint {
-    background: var(--swal-bg-elevated);
-    border: 1px solid var(--swal-border);
-    border-radius: 6px;
-    padding: 0.65rem 0.85rem;
-    color: var(--swal-accent-cyan);
-    font-family: var(--swal-font-mono);
-    font-size: 0.85rem;
-    margin: 0;
-    overflow-x: auto;
-  }
-  h2 { color: var(--swal-text); margin: 0 0 0.5rem; font-size: 1.05rem; }
 </style>

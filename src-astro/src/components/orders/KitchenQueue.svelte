@@ -15,7 +15,7 @@
   import { meshSubscribe, meshPublish } from '../../lib/mesh';
   import { api } from '../../lib/api-client';
   import { isLocalMode } from '../../lib/local/localMode';
-  import { isOrderStatus, ORDER_STATUS_LABELS } from '../../lib/orderStateMachine';
+  import { isOrderStatus, ORDER_STATUS_BADGE_LABELS, ORDER_STATUS_LABELS } from '../../lib/orderStateMachine';
   import { shouldSeedKdsDemo, isDemoFlaggedUrl } from '../../lib/kdsAutoSeed';
   import { mapOrder } from '../../lib/storeSync';
   import { normalizeOrdersPayload } from '../../lib/orderSync';
@@ -103,7 +103,7 @@
   );
 
   let log = $state<{ id: number; ts: string; text: string }[]>([
-    { id: 0, ts: new Date().toISOString().slice(11, 19), text: '[kds] queue ready — esperando pedidos...' },
+    { id: 0, ts: new Date().toISOString().slice(11, 19), text: '[cocina] cola lista — esperando pedidos…' },
   ]);
   let logCounter = 1;
 
@@ -129,12 +129,12 @@
         if (existingIdx !== -1) {
           const old = orders.list[existingIdx];
           if (old.status !== o.status) {
-            pushLog(`[kds] backend status update ${o.id.slice(-6)} (${old.status} → ${o.status})`);
+            pushLog(`[cocina] estado actualizado ${o.id.slice(-6)} (${ORDER_STATUS_LABELS[old.status]} → ${ORDER_STATUS_LABELS[o.status]})`);
           }
           orders.list[existingIdx] = o as Order;
         } else {
           orders.list.push(o as Order);
-          pushLog(`[kds] backend sync ${o.id.slice(-6)} (${o.status})`);
+          pushLog(`[cocina] pedido sincronizado ${o.id.slice(-6)} (${ORDER_STATUS_LABELS[o.status]})`);
         }
       }
     } catch {
@@ -144,7 +144,7 @@
 
   onMount(async () => {
     hydrateOrders();
-    pushLog(`[kds] loaded ${orders.list.length} orders from local storage`);
+    pushLog(`[cocina] ${orders.list.length} pedidos cargados de este equipo`);
 
     try {
       unsub = await meshSubscribe('order:created', (payload) => {
@@ -157,12 +157,12 @@
           orders.list[existingIdx] = o;
         } else {
           orders.list.push(o);
-          pushLog(`[kds] mesh order:created ${o.id.slice(-6)} (${o.status})`);
+          pushLog(`[cocina] pedido de la red local ${o.id.slice(-6)} (${ORDER_STATUS_LABELS[o.status]})`);
         }
       });
-      pushLog('[kds] subscribed to mesh:order:created');
+      pushLog('[cocina] escuchando pedidos nuevos de la red local');
     } catch {
-      pushLog('[kds] mesh unavailable — local-only mode');
+      pushLog('[cocina] sin red local — este equipo funciona solo');
     }
 
     // Se espera a la sincronizacion con el backend antes de decidir si hay
@@ -197,7 +197,7 @@
         for (const o of demo) {
           orders.list.push(o);
           await meshPublish('order:created', o);
-          pushLog(`[kds] demo published ${o.id.slice(-6)}`);
+          pushLog(`[cocina] pedido de prueba ${o.id.slice(-6)}`);
         }
       }
     }
@@ -286,7 +286,7 @@
         const o = mapOrder(rec) as Order;
         orders.list.push(o);
         await meshPublish('order:created', o);
-        pushLog(`[kds] demo publicada ${o.id.slice(-6)} (${o.status})`);
+        pushLog(`[cocina] pedido de prueba ${o.id.slice(-6)} (${ORDER_STATUS_LABELS[o.status]})`);
       } catch {
         continue;
       }
@@ -369,14 +369,14 @@
   }
 
   function handleStatusChange(id: string, status: OrderStatus) {
-    pushLog(`[kds] transition ${id.slice(-6)} → ${status}`);
+    pushLog(`[cocina] ${id.slice(-6)} pasa a ${ORDER_STATUS_BADGE_LABELS[status]}`);
     void meshPublish('order:status', { id, status });
   }
 </script>
 
 <section class="kds-queue">
   <header class="kds-header">
-    <h2>🍳 Cocina — KDS Realtime</h2>
+    <h2>🍳 Cocina — pedidos en vivo</h2>
     <div class="counters" aria-label="Contadores KDS">
       {#each lanes as status (status)}
         <span class="counter {status}">{byStatus[status].length} {COUNTER_LABELS[status]}</span>
@@ -401,8 +401,8 @@
   </div>
 
   <details class="logs">
-    <summary>📋 Log de eventos (mesh + backend)</summary>
-    <Terminal logs={log.map((l) => ({ id: String(l.id), timestamp: l.ts, level: 'INFO', service: 'kds', message: l.text }))} title="KDS_EVENTS >> swal/hosteler-ia" height="14rem" />
+    <summary>📋 Registro de actividad</summary>
+    <Terminal logs={log.map((l) => ({ id: String(l.id), timestamp: l.ts, level: 'INFO', service: 'kds', message: l.text }))} title="EVENTOS DE COCINA >> swal/hosteler-ia" height="14rem" />
   </details>
 </section>
 

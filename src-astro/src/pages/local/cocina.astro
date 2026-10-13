@@ -6,24 +6,24 @@ import LocalLayout from "../../layouts/LocalLayout.astro";
 export const prerender = true;
 ---
 
-<LocalLayout title="Cocina — Fi'ze KDS (Local)">
+<LocalLayout title="Cocina — Fi'ze (en este equipo)">
   <main class="kds-page">
     <nav class="crumbs" aria-label="Breadcrumb">
       <a href="/local/">← Inicio</a>
       <span>/</span>
-      <span>KDS Cocina</span>
+      <span>Cocina</span>
     </nav>
 
     <div class="hero">
-      <h1>Kitchen Display System</h1>
+      <h1>Cocina — pantalla de pedidos</h1>
       <p class="hero-sub">
-        Pedidos en tiempo real · estados: pending → preparing → ready → served → paid (cancelled disponible desde pending/preparing).
+        Pedidos en tiempo real · estados: Pendiente → En preparación → Listo → Servido → Cobrado (se puede cancelar mientras esté Pendiente o En preparación).
       </p>
       <p class="staff-hint">
-        Uso para el personal: haz clic en una tarjeta para avanzar de estado; la cancelación solo es posible desde pending o preparing.
+        Uso para el personal: haz clic en una tarjeta para avanzar de estado; la cancelación solo es posible desde Pendiente o En preparación.
       </p>
       <div class="health-row">
-        <span class="health-item"><StatusBadge status="warning" /> offline buffer</span>
+        <span class="health-item"><StatusBadge status="warning" /> sigue funcionando sin internet</span>
       </div>
     </div>
 

@@ -10,6 +10,7 @@
   import { formatCOP } from '../../lib/money';
   import PaymentForm from './PaymentForm.svelte';
   import { orders, setStatus, type Order, type OrderStatus } from '../../stores/orders.svelte';
+  import { ORDER_STATUS_BADGE_LABELS } from '../../lib/orderStateMachine';
   import { api } from '../../lib/api-client';
   import { mapOrder } from '../../lib/storeSync';
 
@@ -146,7 +147,7 @@
       </div>
       <div class="status">
         <StatusBadge status={statusToBadge(order.status)} />
-        <span class="label">{order.status.toUpperCase()}</span>
+        <span class="label">{ORDER_STATUS_BADGE_LABELS[order.status]}</span>
       </div>
     </header>
 
@@ -176,7 +177,7 @@
     <div class="actions">
       {#if NEXT[order.status as OrderStatus]}
         <button class="btn primary" onclick={advance} disabled={isTransitioning}>
-          {isTransitioning ? 'Procesando...' : `→ ${NEXT[order.status as OrderStatus]}`}
+          {isTransitioning ? 'Procesando...' : `→ ${ORDER_STATUS_BADGE_LABELS[NEXT[order.status as OrderStatus] as OrderStatus]}`}
         </button>
       {/if}
       {#if order.status !== 'cancelled' && order.status !== 'paid'}

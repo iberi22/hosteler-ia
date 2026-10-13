@@ -44,3 +44,31 @@ export const OFFLINE_RETRY_SCRIPT = `(function () {
   // respuesta. No se le pide al usuario que este pendiente.
   window.addEventListener('online', recargar);
 })();`;
+
+/**
+ * /local/pedidos: marca el chip del filtro que corresponde a `?status=`.
+ *
+ * La pagina es prerenderizada, asi que `Astro.url.searchParams` es null en el
+ * HTML generado y el chip activo quedaba siempre en «Todos» aunque el carril
+ * filtrado fuese otro (QA pre-entrega 2026-10-13 #6). Aqui se lee la URL real,
+ * en el cliente, que es donde existe.
+ */
+export const PEDIDOS_FILTER_SCRIPT = `(function () {
+  var chips = document.querySelectorAll('[data-pedidos-chip]');
+  if (!chips.length) return;
+  var VALIDOS = ['pending', 'preparing', 'ready', 'served', 'paid', 'cancelled'];
+  var status = '';
+  try {
+    status = new URLSearchParams(window.location.search).get('status') || '';
+  } catch (err) {
+    status = '';
+  }
+  if (VALIDOS.indexOf(status) === -1) status = '';
+  for (var i = 0; i < chips.length; i++) {
+    var chip = chips[i];
+    var activo = chip.getAttribute('data-pedidos-chip') === status;
+    chip.classList.toggle('active', activo);
+    if (activo) chip.setAttribute('aria-current', 'page');
+    else chip.removeAttribute('aria-current');
+  }
+})();`;

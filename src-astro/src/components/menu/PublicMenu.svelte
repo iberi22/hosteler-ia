@@ -108,6 +108,10 @@
 
 <section class="public-menu">
   <h1>{restaurantName}</h1>
+  <!-- El comensal que llego por el QR ve su mesa: antes solo iba en el mensaje de WhatsApp (#11). -->
+  {#if tableLabel}
+    <p class="table-label" data-testid="menu-table">Mesa {tableLabel}</p>
+  {/if}
   {#if categories.length > 0}
     <nav class="cats" aria-label="Categorías">
       <button class:active={activeCategory === null} onclick={() => (activeCategory = null)}>Todo</button>
@@ -263,4 +267,10 @@
   .wa-btn:hover { background: #1fbe59; }
 
   .wa-missing { margin: 0; font-size: 0.95rem; font-weight: 600; text-align: center; }
+  .table-label {
+    margin: 0.25rem 0 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--swal-accent, #22d3ee);
+  }
 </style>
