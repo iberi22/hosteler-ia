@@ -129,8 +129,14 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await expect(page.getByRole('heading', { name: 'Mesas', exact: true })).toBeVisible();
   await page.getByPlaceholder('Nº de Mesa').fill('1');
   await page.getByPlaceholder('Capacidad (pax)').fill('4');
+  // #9: los dos campos de alta de mesa tienen etiqueta accesible (ya no solo placeholder).
+  await expect(page.getByLabel('Nº de Mesa')).toBeVisible();
+  await expect(page.getByLabel('Capacidad (pax)')).toBeVisible();
   await page.getByRole('button', { name: 'Añadir Mesa' }).click();
   await expect(page.getByText('Mesa 1')).toBeVisible();
+  // #2: en modo local la accion de QR no lleva al panel de la nube (terminaba en /login).
+  await expect(page.getByRole('link', { name: 'Ver QR para imprimir' })).toHaveAttribute('href', '/local/publicar/');
+  await expect(page.locator('a[href^="/dashboard"]')).toHaveCount(0);
 
   // Nuevo pedido por la UI en modo local (sin conexión): el flujo real del restaurante.
   // La mesa 1 se pre-selecciona desde su tarjeta (accion por mesa de /local/mesas/).
@@ -156,6 +162,10 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await expect(page.locator('.counter.pending')).toHaveText('1 ⏳ pendientes', { timeout: 15_000 });
   await page.goto('/local/cocina/');
   await expect(page.locator('.counter.pending')).toHaveText('1 ⏳ pendientes', { timeout: 15_000 });
+  // #3: la tarjeta del KDS muestra el numero de mesa, no el id interno del pedido.
+  const kdsCard = page.locator('.kds-card').first();
+  await expect(kdsCard.getByText('Mesa 1', { exact: true })).toBeVisible();
+  await expect(kdsCard.getByText(/Mesa [0-9a-f]{8}-/)).toHaveCount(0);
 
   // Transición del pedido en KDS
   await page.getByRole('button', { name: '→ preparing' }).first().click();

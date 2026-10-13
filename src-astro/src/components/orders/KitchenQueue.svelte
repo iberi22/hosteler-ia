@@ -19,12 +19,31 @@
   import { shouldSeedKdsDemo, isDemoFlaggedUrl } from '../../lib/kdsAutoSeed';
   import { mapOrder } from '../../lib/storeSync';
   import { normalizeOrdersPayload } from '../../lib/orderSync';
+  import { tableNumberById, type TableRef } from '../../lib/tableNumbers';
   import type { DomainRecord } from '../../lib/domain';
 
   let { autoPublish = true, statuses }: { autoPublish?: boolean; statuses?: OrderStatus[] } = $props();
 
   let unsub: (() => void) | null = null;
   let pollHandle: ReturnType<typeof setInterval> | null = null;
+
+  // Mesas del local: `order.tableId` es un id interno y el personal necesita el numero
+  // (QA pre-entrega 2026-10-13 #3: la tarjeta decia «Mesa mv6j956n-5ct119»).
+  let tables = $state<TableRef[]>([]);
+
+  async function loadTables() {
+    try {
+      const res = await api.get('/api/tables');
+      if (!res.ok) return;
+      const data: unknown = await res.json();
+      const list = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+      tables = list
+        .filter((t) => !t.deleted_at && t.id != null)
+        .map((t) => ({ id: String(t.id), number: Number(t.number) }));
+    } catch {
+      /* sin mesas se pinta «—»; no se rompe la cola */
+    }
+  }
 
   // 'served' va incluida a proposito: sin ella los pedidos que ya salieron de
   // la cocina desaparecian del KDS y no habia forma de cobrar. El cobro se
@@ -154,6 +173,7 @@
     // abre con `?demo=1` explicito (ver kdsAutoSeed.ts). Sin bandera, estado
     // vacio (EMPTY_LABELS) y cero escrituras en la base del restaurante.
     await pollBackend();
+    await loadTables();
     pollHandle = setInterval(pollBackend, 15_000);
 
     // Demo del KDS. Servidor (/dashboard/kitchen): fantasmas en memoria de
@@ -281,14 +301,24 @@
       const data: unknown = await res.json();
       const list = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
       const found = list.find((t) => Number(t.number) === number && !t.deleted_at);
-      if (found && typeof found.id === 'string') return found.id;
+      if (found && typeof found.id === 'string') {
+        rememberTable(found.id, number);
+        return found.id;
+      }
       const created = await api.post('/api/tables', { number, capacity: 4 });
       if (!created.ok) return null;
       const body = (await created.json()) as Record<string, unknown>;
-      return typeof body.id === 'string' ? body.id : null;
+      if (typeof body.id !== 'string') return null;
+      rememberTable(body.id, number);
+      return body.id;
     } catch {
       return null;
     }
+  }
+
+  /** Mantiene el mapa id->numero al dia cuando la demo crea mesas despues de `loadTables`. */
+  function rememberTable(id: string, number: number) {
+    if (!tables.some((t) => t.id === id)) tables = [...tables, { id, number }];
   }
 
   function demoSeed(): Order[] {
@@ -363,7 +393,7 @@
             <p class="empty">{EMPTY_LABELS[status]}</p>
           {/if}
           {#each byStatus[status] as o (o.id)}
-            <OrderCard order={o} onStatusChange={handleStatusChange} />
+            <OrderCard order={o} tableNumber={tableNumberById(o.tableId, tables)} onStatusChange={handleStatusChange} />
           {/each}
         </div>
       </div>

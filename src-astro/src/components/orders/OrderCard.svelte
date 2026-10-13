@@ -13,8 +13,10 @@
   import { api } from '../../lib/api-client';
   import { mapOrder } from '../../lib/storeSync';
 
-  let { order, onStatusChange } = $props<{
+  let { order, tableNumber = null, onStatusChange } = $props<{
     order: Order;
+    /** Numero de mesa resuelto por KitchenQueue (el id interno no le dice nada al personal, QA #3). */
+    tableNumber?: number | null;
     onStatusChange?: (id: string, status: OrderStatus) => void;
   }>();
 
@@ -139,7 +141,7 @@
   <div class="kds-card">
     <header class="kds-header">
       <div class="meta">
-        <Badge variant="info">Mesa {order.tableId ?? '—'}</Badge>
+        <Badge variant="info">Mesa {tableNumber ?? '—'}</Badge>
         <span class="id">{order.id.slice(-6)}</span>
       </div>
       <div class="status">

@@ -12,11 +12,17 @@
     status?: 'vacant' | 'occupied';
   };
 
-  let { onCountChange = (_count: number) => {}, newOrderBase = null } = $props<{
+  let { onCountChange = (_count: number) => {}, newOrderBase = null, printHref = '/dashboard/tables/print', printLabel = 'Imprimir QR' } = $props<{
     onCountChange?: (count: number) => void;
     /** Base del flujo de toma (p. ej. `/local/nuevo-pedido/`): si se pasa, cada mesa ofrece
         un enlace "Nuevo pedido" con `?mesa=<id>`. El dashboard no lo pasa y queda igual. */
     newOrderBase?: string | null;
+    /** Hoja de QR imprimible. En modo local NO puede ser la del dashboard: `/dashboard/tables/print`
+        pide sesion y expulsa al duenno a `/login` (QA pre-entrega 2026-10-13 #2). La pagina local
+        pasa `/local/publicar/`, que ya tiene los QR por mesa. */
+    printHref?: string;
+    /** Texto de la accion de QR (en local apunta a Publicar, no a la hoja del dashboard). */
+    printLabel?: string;
   }>();
 
   let tables = $state<Table[]>([]);
@@ -110,13 +116,14 @@
   <div class="header-bar">
     <h2 class="count-title">Mesas <span class="accent">({tables.length})</span></h2>
     {#if tables.length > 0}
-      <Button variant="secondary" href="/dashboard/tables/print" target="_blank" rel="noopener">Imprimir QR</Button>
+      <Button variant="secondary" href={printHref}>{printLabel}</Button>
     {/if}
   </div>
 
   <form class="inline-form" onsubmit={createTable}>
     <Input
       type="number"
+      label="Nº de Mesa"
       placeholder="Nº de Mesa"
       bind:value={newNumber}
       required
@@ -124,6 +131,7 @@
     />
     <Input
       type="number"
+      label="Capacidad (pax)"
       placeholder="Capacidad (pax)"
       bind:value={newCapacity}
       required
