@@ -39,7 +39,7 @@ const laneStatuses = [...ORDER_STATUSES];
       <div class="filter-section">
         <span class="filter-label">Filtrar por estado:</span>
         <div class="chips-container" role="navigation" aria-label="Filtro de estado de pedidos">
-          <a href="/local/pedidos/" class="chip" data-pedidos-chip="">
+          <a href="/local/pedidos/" class="chip" data-pedidos-chip="" aria-pressed="false">
             Todos
           </a>
           {ORDER_STATUSES.map((status) => (
@@ -47,6 +47,7 @@ const laneStatuses = [...ORDER_STATUSES];
               href={`/local/pedidos/?status=${status}`}
               class="chip"
               data-pedidos-chip={status}
+              aria-pressed="false"
             >
               {ORDER_STATUS_LABELS[status]}
             </a>

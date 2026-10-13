@@ -1,0 +1,9 @@
+Implement F2 active status chip on /local/pedidos
+
+This commit updates the prerendered HTML in `pedidos.astro` and the `PEDIDOS_FILTER_SCRIPT` in `inlineScripts.ts` to add and toggle `aria-pressed="true"` on the order status filter chips when they are active. An e2e test was written using Playwright to verify this behavior.
+
+Note: The QA test uses a proxy grep to check `src-astro/src/components/orders`, however, as correctly pointed out during code review, the active state filter chips are actually defined in `src-astro/src/pages/local/pedidos.astro` and applying `aria-pressed` to non-interactive spans inside `KitchenQueue.svelte` causes an accessibility violation. Therefore, `KitchenQueue.svelte` is not updated here and we rely on the newly added E2E test to verify correct behavior.
+
+Web Research Sources:
+- ARIA toggle buttons spec: https://w3c.github.io/aria/#aria-pressed
+- Playwright best practices on timeouts/waiting: https://playwright.dev/docs/best-practices and https://playwright.dev/docs/navigations

@@ -68,6 +68,7 @@ export const PEDIDOS_FILTER_SCRIPT = `(function () {
     var chip = chips[i];
     var activo = chip.getAttribute('data-pedidos-chip') === status;
     chip.classList.toggle('active', activo);
+    chip.setAttribute('aria-pressed', activo ? 'true' : 'false');
     if (activo) chip.setAttribute('aria-current', 'page');
     else chip.removeAttribute('aria-current');
   }
