@@ -105,6 +105,24 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   for (const dish of DISHES) await expect(page.getByText(dish.name).first()).toBeVisible();
   await context.setOffline(false);
 
+  // Precio con punto de miles: "38.000" son 38.000 pesos, no 38 (QA pre-entrega 2026-10-13 #1,
+  // dinero: `parseFloat` guardaba el plato 1000x mas barato y se publicaba asi en la carta).
+  // El mismo dialogo lleva la trampa de foco (#14): el foco entra al dialogo y Tab cicla dentro.
+  await page.getByRole('button', { name: '+ Nuevo artículo' }).click();
+  const panel = page.locator('.dialog-panel');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('#sku')).toBeFocused();
+  // Ultimo enfocable del dialogo -> Tab vuelve al primero (la ✕ de cerrar), sin salir a la lista de atras.
+  await panel.getByRole('button', { name: 'Guardar' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Cerrar' })).toBeFocused();
+  await page.locator('#sku').fill(`SKU-${suffix}`);
+  await page.locator('#item-name').fill('Bandeja paisa');
+  await page.locator('#price').fill('38.000');
+  await page.getByRole('button', { name: 'Guardar' }).click();
+  await expect(page.getByText('$ 38.000')).toBeVisible();
+  await expect(page.getByText('$ 38', { exact: true })).toHaveCount(0);
+
   // Mesas en modo local (sin conexión): creamos la mesa 1.
   await context.setOffline(true);
   await page.goto('/local/mesas/');

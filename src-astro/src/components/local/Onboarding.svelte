@@ -19,6 +19,7 @@
   } from '../../lib/menuSync';
   import type { StoreMenuCategory, StoreMenuItem } from '../../lib/storeSync';
   import { formatCOP } from '../../lib/money';
+  import { parseCopPrice } from '../../lib/copPrice';
   import CloudLevels from './CloudLevels.svelte';
   import PublishCard from './PublishCard.svelte';
   import { ONBOARDING_STEPS, type OnboardingState } from '../../lib/local/onboarding';
@@ -205,17 +206,15 @@
     }
   }
 
-  function parsePrice(raw: string): number {
-    return Number(raw.replace(/[^\d]/g, ''));
-  }
-
   async function addDish(e: Event) {
     e.preventDefault();
     menuError = null;
-    const price = parsePrice(dishPrice);
+    // Parser compartido (src/lib/copPrice.ts): "32.000" son 32.000 pesos. Antes vivia
+    // aqui una copia que aceptaba basura ("12abc" -> 12) sin validar los miles.
+    const price = parseCopPrice(dishPrice);
     if (!dishName.trim()) return void (menuError = 'Escribe el nombre del plato.');
     if (!dishCat) return void (menuError = 'Primero crea una categoría (por ejemplo, Almuerzos).');
-    if (!price) return void (menuError = 'Escribe el precio en pesos, por ejemplo 16000.');
+    if (price === null || price <= 0) return void (menuError = 'Escribe el precio en pesos, por ejemplo 16000.');
     menuBusy = true;
     const name = dishName.trim();
     const rawPrice = dishPrice;
