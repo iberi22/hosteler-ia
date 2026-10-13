@@ -18,6 +18,9 @@ test("onboards local, creates table 1, adds order and KDS shows Mesa 1", async (
 	await page.getByLabel("Plato").fill("Tinto");
 	await page.getByLabel("Precio (COP)").fill("1000");
 	await page.getByRole("button", { name: "Agregar plato" }).click();
+	// addDish saves asynchronously: wait for the dish to show before navigating away,
+	// otherwise the page reload can cancel the save and the order page sees an empty menu.
+	await expect(page.getByText("Tinto", { exact: true }).first()).toBeVisible();
 
 	// Create Table 1
 	await page.goto("/local/mesas/");
@@ -33,6 +36,8 @@ test("onboards local, creates table 1, adds order and KDS shows Mesa 1", async (
 		.selectOption({ label: "Mesa 1 (4 pax)" });
 	await page.getByRole("button", { name: "Añadir Tinto" }).click();
 	await page.getByRole("button", { name: "Crear pedido" }).click();
+	// Same race as the dish: wait for the order to be saved before the KDS page loads.
+	await expect(page.getByText("Pedido creado").first()).toBeVisible();
 
 	// Check KDS
 	await page.goto("/local/cocina/");
