@@ -122,6 +122,9 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await page.getByRole('button', { name: 'Guardar' }).click();
   await expect(page.getByText('$ 38.000')).toBeVisible();
   await expect(page.getByText('$ 38', { exact: true })).toHaveCount(0);
+  // #15: los botones de cada plato tienen nombre accesible, no solo el glifo ◉/✎.
+  await expect(page.getByRole('button', { name: 'Marcar agotado' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Editar' }).first()).toBeVisible();
 
   // Mesas en modo local (sin conexión): creamos la mesa 1.
   await context.setOffline(true);
@@ -155,11 +158,17 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await expect(page.getByTestId('take-order-total')).toContainText('22.000');
   await page.getByRole('button', { name: 'Crear pedido' }).click();
   await expect(page.getByText('Pedido creado')).toBeVisible();
+  // #17: el acuse lleva el espacio despues del separador (antes «Mesa 1 ·Total»).
+  await expect(page.locator('.success-detail')).toHaveText(/^Mesa 1 · Total\s*\$\s*22\.000 · pendiente en cocina$/);
 
   // Pedidos y cocina en modo local (sin conexión): el pedido creado por la UI sale en pending
   // via poll/store de la cola (sin recarga manual) y avanza por la maquina de estados.
   await page.goto('/local/pedidos/');
   await expect(page.locator('.counter.pending')).toHaveText('1 ⏳ pendientes', { timeout: 15_000 });
+  // #8: fuera la tarjeta tecnica "API de Pedidos" de la pantalla del duenno.
+  await expect(page.getByRole('heading', { name: 'API de Pedidos' })).toHaveCount(0);
+  // #6: sin filtro, el chip activo es "Todos".
+  await expect(page.locator('.chip.active')).toHaveText('Todos');
   await page.goto('/local/cocina/');
   await expect(page.locator('.counter.pending')).toHaveText('1 ⏳ pendientes', { timeout: 15_000 });
   // #3: la tarjeta del KDS muestra el numero de mesa, no el id interno del pedido.
@@ -167,16 +176,16 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   await expect(kdsCard.getByText('Mesa 1', { exact: true })).toBeVisible();
   await expect(kdsCard.getByText(/Mesa [0-9a-f]{8}-/)).toHaveCount(0);
 
-  // Transición del pedido en KDS
-  await page.getByRole('button', { name: '→ preparing' }).first().click();
+  // Transición del pedido en cocina (botones en español, QA pre-entrega 2026-10-13 #7)
+  await page.getByRole('button', { name: '→ En preparación' }).first().click();
   await expect(page.locator('.counter.preparing')).not.toHaveText('0 🔥 en cocina', { timeout: 10_000 });
-  await page.getByRole('button', { name: '→ ready' }).first().click();
+  await page.getByRole('button', { name: '→ Listo' }).first().click();
   await expect(page.locator('.counter.ready')).not.toHaveText('0 ✅ listos', { timeout: 10_000 });
-  await page.getByRole('button', { name: '→ served' }).first().click();
+  await page.getByRole('button', { name: '→ Servido' }).first().click();
   await expect(page.locator('.counter.served')).not.toHaveText('0 🍽️ por cobrar', { timeout: 15_000 });
 
   // Localizamos mediante el botón que nos abre el formulario de cobro.
-  const paidBtn = page.getByRole('button', { name: '→ paid' }).first();
+  const paidBtn = page.getByRole('button', { name: '→ Cobrado' }).first();
   await expect(paidBtn).toBeVisible({ timeout: 15_000 });
 
   // Cobrar: abre el modal y graba en IndexedDB
@@ -193,7 +202,9 @@ test('local-first sin modulo cloud y sin red externa: onboarding -> platos -> pa
   // Recargamos la página offline y la mesa y los pedidos servidos siguen ahí (en la vista de pedidos)
   await page.goto('/local/pedidos/?status=paid');
   await page.reload();
-  await expect(page.getByText('PAID')).toBeVisible();
+  // #6: con `?status=paid` el chip activo es "Cobrados" (antes seguia en "Todos").
+  await expect(page.locator('.chip.active')).toHaveText('Cobrados');
+  await expect(page.getByText('Cobrado', { exact: true })).toBeVisible();
   await page.goto('/local/mesas/');
   await expect(page.getByText('Mesa 1')).toBeVisible();
   await context.setOffline(false);
