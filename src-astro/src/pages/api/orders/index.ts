@@ -18,8 +18,9 @@ const createOrderSchema = z.object({
   instance_id: z.string().optional(),
 });
 
+// Random UUID: the id is the customer's capability to read the order status, so it must not be guessable.
 function genId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return crypto.randomUUID();
 }
 
 export const GET: APIRoute = async ({ request, locals }) => {

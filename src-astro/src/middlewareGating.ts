@@ -14,7 +14,7 @@ export type AccessDecision =
 // `instance_id` + timestamps que no necesita nadie fuera del tenant.
 // `/api/menu-nutrition` (solo GET) alimenta la tarjeta nutricional de la carta publica: devuelve solo
 // totales por porcion de los platos publicos (`publicMenuNutrition.ts`), nunca recetas ni inventario.
-export const PUBLIC_PREFIXES = ['/api/qr/', '/api/auth/', '/api/restaurants', '/api/menu-nutrition'];
+export const PUBLIC_PREFIXES = ['/api/qr/', '/api/auth/', '/api/restaurants', '/api/menu-nutrition', '/api/public-order/'];
 export const PUBLIC_PAGES = ['/', '/login', '/register'];
 export const AI_PREFIX = '/api/ai/';
 export const DASHBOARD_PREFIX = '/dashboard/';
