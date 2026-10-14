@@ -17,6 +17,7 @@
     restoreBackup,
     type LocalSummary,
   } from '../../lib/local/backupData';
+  import { exportMyData } from '../../lib/local/exportPlain';
   import { loadIdentity } from '../../lib/local/identity';
   import { getLocal, getSettings } from '../../lib/local/localDb';
   import { publicMenuUrl } from '../../lib/local/localMode';
@@ -216,6 +217,19 @@
       <p class={exportMsg.ok ? 'l-alert l-alert-ok' : 'l-alert l-alert-error'} role={exportMsg.ok ? 'status' : 'alert'}>{exportMsg.text}</p>
     {/if}
   </section>
+
+  {#if hasLocal}
+    <section class="l-card" aria-labelledby="plain-export-title">
+      <h2 id="plain-export-title">Exportar mis datos</h2>
+      <p class="l-alert l-alert-warn">
+        Estos archivos <strong>NO están cifrados</strong>. Contienen todos los datos de este equipo (correos del personal, ventas, etc.). Manéjalos con cuidado.
+      </p>
+      <div class="l-row l-stack-mobile">
+        <button type="button" class="l-btn" onclick={() => exportMyData('json')} disabled={exporting}>Descargar JSON</button>
+        <button type="button" class="l-btn" onclick={() => exportMyData('sql')} disabled={exporting}>Descargar SQL</button>
+      </div>
+    </section>
+  {/if}
 
   <section class="l-card" aria-labelledby="imp-title">
     <h2 id="imp-title">Restaurar una copia</h2>
