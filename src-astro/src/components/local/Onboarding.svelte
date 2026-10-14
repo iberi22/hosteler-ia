@@ -437,9 +437,10 @@
         </div>
         <div class="l-field">
           <label for="ob-dish-cat">Categoría</label>
-          <select id="ob-dish-cat" class="l-input" bind:value={dishCat} disabled={cats.length === 0}>
+          <select id="ob-dish-cat" class="l-input" bind:value={dishCat} disabled={cats.length === 0} aria-describedby={cats.length === 0 ? 'ob-dish-cat-help' : undefined}>
             {#each cats as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
           </select>
+          {#if cats.length === 0}<p id="ob-dish-cat-help" class="l-help">Crea una categoría arriba para elegirla aquí.</p>{/if}
         </div>
         <button type="submit" class="l-btn l-btn-primary" disabled={menuBusy || cats.length === 0}>Agregar plato</button>
       </form>
