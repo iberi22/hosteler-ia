@@ -17,6 +17,7 @@
     restoreBackup,
     type LocalSummary,
   } from '../../lib/local/backupData';
+  import { exportMyData } from '../../lib/local/exportPlain';
   import { loadIdentity } from '../../lib/local/identity';
   import { getLocal, getSettings } from '../../lib/local/localDb';
   import { publicMenuUrl } from '../../lib/local/localMode';
@@ -30,6 +31,10 @@
 
   let exporting = $state(false);
   let exportMsg = $state<{ ok: boolean; text: string } | null>(null);
+
+  let exportingPlainJson = $state(false);
+  let exportingPlainSql = $state(false);
+  let plainExportMsg = $state<{ ok: boolean; text: string } | null>(null);
 
   let file = $state<File | null>(null);
   let code = $state('');
@@ -79,6 +84,21 @@
       exportMsg = { ok: false, text: (e as Error).message || 'No se pudo crear la copia.' };
     } finally {
       exporting = false;
+    }
+  }
+
+  async function doExportPlain(kind: 'json' | 'sql') {
+    if (kind === 'json') exportingPlainJson = true;
+    else exportingPlainSql = true;
+    plainExportMsg = null;
+    try {
+      await exportMyData(kind);
+      plainExportMsg = { ok: true, text: `Archivo ${kind.toUpperCase()} descargado con éxito.` };
+    } catch (err) {
+      plainExportMsg = { ok: false, text: errorText(err) };
+    } finally {
+      if (kind === 'json') exportingPlainJson = false;
+      else exportingPlainSql = false;
     }
   }
 
@@ -214,6 +234,29 @@
     {/if}
     {#if exportMsg}
       <p class={exportMsg.ok ? 'l-alert l-alert-ok' : 'l-alert l-alert-error'} role={exportMsg.ok ? 'status' : 'alert'}>{exportMsg.text}</p>
+    {/if}
+  </section>
+
+  <section class="l-card" aria-labelledby="export-plain-title">
+    <h2 id="export-plain-title">Exportar mis datos</h2>
+    <p>
+      Exporta todos los datos de este local generados en el dispositivo.
+      <strong>Atención: Estos archivos NO están cifrados</strong> y contienen ventas y correos.
+    </p>
+    {#if loaded && hasLocal}
+      <div class="l-row l-stack-mobile">
+        <button type="button" class="l-btn" onclick={() => doExportPlain('json')} disabled={exportingPlainJson || exportingPlainSql}>
+          {exportingPlainJson ? 'Exportando…' : 'Descargar JSON'}
+        </button>
+        <button type="button" class="l-btn" onclick={() => doExportPlain('sql')} disabled={exportingPlainJson || exportingPlainSql}>
+          {exportingPlainSql ? 'Exportando…' : 'Descargar SQL'}
+        </button>
+      </div>
+      {#if plainExportMsg}
+        <p class={plainExportMsg.ok ? 'l-alert l-alert-ok' : 'l-alert l-alert-error'} role={plainExportMsg.ok ? 'status' : 'alert'}>{plainExportMsg.text}</p>
+      {/if}
+    {:else}
+      <p>Todavía no hay un local en este equipo.</p>
     {/if}
   </section>
 
