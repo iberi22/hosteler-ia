@@ -48,7 +48,7 @@ const cartaHref = slug
 ---
 <BaseLayout title="Pedido confirmado — Fize" currentPath={`/order-confirmation/${orderId}`}>
   <h1>Pedido confirmado</h1>
-  <OrderStatus tableNumber={tableNumber} cartaHref={cartaHref} />
+  <OrderStatus orderId={orderId} instanceId={instanceId} tableNumber={tableNumber} cartaHref={cartaHref} />
   <ul>
     {lines.map((line) => (
       <li>{line.name} × {line.qty}</li>

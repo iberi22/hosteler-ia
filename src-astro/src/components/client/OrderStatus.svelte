@@ -1,17 +1,56 @@
 <script lang="ts">
-  // OrderStatus.svelte — confirmacion fija del pedido.
-  // Sin sondeo: GET /api/orders/{id} es privado (401 para el comensal) y el
-  // estado nunca cambiaba, solo gastaba ~1.200 peticiones por hora y pestana.
+  // OrderStatus.svelte — confirmacion de pedido con sondeo del estado publico.
+  // Consulta GET /api/public-order/{id} cada 10 s hasta un estado final (pagado o cancelado).
+  import { onMount } from 'svelte';
+  import type { OrderStatus } from '../../lib/orderStateMachine';
+
   interface Props {
+    orderId: string;
+    instanceId: string;
     tableNumber?: string;
     cartaHref?: string;
   }
 
-  let { tableNumber = '', cartaHref = '' }: Props = $props();
+  let { orderId, instanceId, tableNumber = '', cartaHref = '' }: Props = $props();
+
+  let label = $state('');
+  let status: OrderStatus | '' = $state('');
+
+  onMount(() => {
+    let interval: ReturnType<typeof setInterval> | undefined;
+    let stopped = false;
+
+    const stop = () => {
+      stopped = true;
+      if (interval) clearInterval(interval);
+    };
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/public-order/${encodeURIComponent(orderId)}?instance_id=${encodeURIComponent(instanceId)}`,
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { status?: OrderStatus; label?: string };
+        if (stopped || !data.status) return;
+        status = data.status;
+        label = data.label ?? '';
+        if (status === 'paid' || status === 'cancelled') stop();
+      } catch {
+        // Un fallo de red no rompe la pantalla: se reintenta en el siguiente ciclo.
+      }
+    };
+
+    poll();
+    interval = setInterval(poll, 10_000);
+    return stop;
+  });
 </script>
 
-<div class="order-status" role="status">
-  <p><strong>¡Listo! Tu pedido llegó a la cocina.</strong></p>
+<div class="order-status" role="status" aria-live="polite">
+  <p>
+    <strong>{label || '¡Listo! Tu pedido llegó a la cocina.'}</strong>
+  </p>
   {#if tableNumber}<p>Mesa {tableNumber}</p>{/if}
   <p>Si necesitas algo, llama al mesero.</p>
   {#if cartaHref}<p><a class="back" href={cartaHref}>Volver a la carta</a></p>{/if}
