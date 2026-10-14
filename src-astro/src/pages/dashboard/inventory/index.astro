@@ -4,6 +4,7 @@ import InventoryStats from '../../../components/inventory/InventoryStats.svelte'
 import StockAlerts from '../../../components/inventory/StockAlerts.svelte';
 import PredictionCard from '../../../components/inventory/PredictionCard.svelte';
 import InventoryManager from '../../../components/inventory/InventoryManager.svelte';
+import RecommendationContainer from '../../../components/ai/RecommendationContainer.svelte';
 import { inventory } from '../../../stores/inventory.svelte';
 ---
 
@@ -20,6 +21,7 @@ import { inventory } from '../../../stores/inventory.svelte';
         <StockAlerts client:load items={inventory.items} />
       </div>
       <div class="grid-side">
+        <RecommendationContainer client:load />
         <PredictionCard client:load items={inventory.items} />
       </div>
     </div>
