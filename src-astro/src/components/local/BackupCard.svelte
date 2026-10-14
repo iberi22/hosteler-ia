@@ -68,6 +68,22 @@
     }
   });
 
+
+  async function doExportPlain(kind: 'json' | 'sql') {
+    if (kind === 'json') exportingPlainJson = true;
+    else exportingPlainSql = true;
+    plainExportMsg = null;
+    try {
+      await exportMyData(kind);
+      plainExportMsg = { ok: true, text: 'Datos exportados correctamente.' };
+    } catch (err) {
+      plainExportMsg = { ok: false, text: errorText(err) };
+    } finally {
+      if (kind === 'json') exportingPlainJson = false;
+      else exportingPlainSql = false;
+    }
+  }
+
   async function doExport() {
     exporting = true;
     exportMsg = null;
@@ -217,7 +233,35 @@
     {/if}
   </section>
 
-  <section class="l-card" aria-labelledby="imp-title">
+
+  <section class="l-card" aria-labelledby="plain-exp-title">
+    <h2 id="plain-exp-title">Exportar mis datos</h2>
+    <p>
+      Descarga todos los datos de tu local (platos, mesas, pedidos) para usarlos en otros programas o bases de datos.
+    </p>
+    {#if !loaded}
+      <p>Cargando…</p>
+    {:else if !hasLocal}
+      <p>Todavía no hay un local en este equipo.</p>
+    {:else}
+      <div class="l-alert l-alert-warn" style="margin-bottom: 0.75rem;">
+        <strong>¡Atención!</strong> Estos archivos NO están cifrados. Contienen correos electrónicos de tu personal y datos de ventas. Guárdalos en un lugar seguro.
+      </div>
+      <div class="l-row l-stack-mobile">
+        <button type="button" class="l-btn" onclick={() => doExportPlain('json')} disabled={exportingPlainJson}>
+          {exportingPlainJson ? 'Exportando…' : 'Descargar JSON'}
+        </button>
+        <button type="button" class="l-btn" onclick={() => doExportPlain('sql')} disabled={exportingPlainSql}>
+          {exportingPlainSql ? 'Exportando…' : 'Descargar SQL'}
+        </button>
+      </div>
+    {/if}
+    {#if plainExportMsg}
+      <p class={plainExportMsg.ok ? 'l-alert l-alert-ok' : 'l-alert l-alert-error'} role={plainExportMsg.ok ? 'status' : 'alert'}>{plainExportMsg.text}</p>
+    {/if}
+  </section>
+
+<section class="l-card" aria-labelledby="imp-title">
     <h2 id="imp-title">Restaurar una copia</h2>
     <p>Para pasar Fize a un equipo nuevo o recuperar tus datos. <strong>Reemplaza</strong> lo que haya en este equipo por lo de la copia.</p>
     <form class="form" onsubmit={doImport}>
