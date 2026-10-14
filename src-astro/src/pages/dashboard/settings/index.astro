@@ -1,7 +1,6 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import RestaurantForm from '../../../components/settings/RestaurantForm.svelte';
-import { Badge } from '@swal/ui';
 ---
 
 <BaseLayout showNav title="Configuración — Fi'ze Dashboard" currentPath="/dashboard/settings">
@@ -15,9 +14,8 @@ import { Badge } from '@swal/ui';
     <header class="settings-header">
       <div>
         <h1>Configuración del Restaurante</h1>
-        <p class="sub">Administra el perfil de tu local y consulta los detalles de tu plan y suscripción.</p>
+        <p class="sub">Administra el perfil de tu local.</p>
       </div>
-      <Badge variant="info">WAVE-H4.09</Badge>
     </header>
 
     <RestaurantForm client:load />
