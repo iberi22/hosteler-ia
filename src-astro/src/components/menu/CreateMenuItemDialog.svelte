@@ -209,12 +209,15 @@
         </div>
         <div class="field">
           <label class="field-label" for="cat">Categoría *</label>
-          <select id="cat" class="field-select" class:error={errors.categoryId} bind:value={categoryId}>
+          <select id="cat" class="field-select" class:error={errors.categoryId} bind:value={categoryId} disabled={categories.length === 0} aria-describedby={categories.length === 0 ? 'cat-empty' : undefined}>
             <option value="">Seleccionar...</option>
             {#each categories as cat}
               <option value={cat.id}>{cat.name}</option>
             {/each}
           </select>
+          {#if categories.length === 0}
+            <span id="cat-empty" class="recipe-info warning">Crea una categoría antes de agregar un artículo.</span>
+          {/if}
           {#if errors.categoryId}<span class="field-error">{errors.categoryId}</span>{/if}
         </div>
       </div>
