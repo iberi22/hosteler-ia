@@ -4,6 +4,7 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { domainConfig } from '../../../lib/domain.config';
 import type { DomainRecord } from '../../../lib/domain';
 import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
 
 const createCategorySchema = z.object({
   name: z.string().min(1, { message: 'Name is required' }),
@@ -40,6 +41,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
+    requireRole(locals, ['owner']);
     requireSession(locals);
 
     let body: unknown;

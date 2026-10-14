@@ -4,6 +4,7 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { domainConfig } from '../../../lib/domain.config';
 import { requireSession, AuthError } from '../../../lib/auth/session';
 import { isSlugTaken, SLUG_TAKEN_MESSAGE, validateSlug, validateWhatsapp } from '../../../lib/restaurantRules';
+import { requireRole } from '../../../lib/auth/requireRole';
 
 const updateRestaurantSchema = z.object({
   name: z.string().min(1, { message: 'Name cannot be empty' }).optional(),
@@ -56,6 +57,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
+    requireRole(locals, ['owner']);
     requireSession(locals);
 
     const { id } = params;
@@ -156,6 +158,7 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
 
 export const DELETE: APIRoute = async ({ params, request, locals }) => {
   try {
+    requireRole(locals, ['owner']);
     requireSession(locals);
 
     const { id } = params;
