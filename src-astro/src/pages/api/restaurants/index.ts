@@ -10,6 +10,7 @@ import {
   validateSlug,
   validateWhatsapp,
 } from "../../../lib/restaurantRules";
+import { requireRole } from "../../../lib/auth/requireRole";
 
 const createRestaurantSchema = z.object({
   name: z.string().min(1, { message: "Name is required" }),
@@ -51,6 +52,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
+    requireRole(locals, ['owner']);
     requireSession(locals);
 
     let body: unknown;

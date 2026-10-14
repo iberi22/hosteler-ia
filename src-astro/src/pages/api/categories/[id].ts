@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { domainConfig } from '../../../lib/domain.config';
 import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
 
 const updateCategorySchema = z.object({
   name: z.string().min(1, { message: 'Name cannot be empty' }).optional(),
@@ -54,6 +55,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
+    requireRole(locals, ['owner']);
     requireSession(locals);
 
     const { id } = params;
@@ -121,6 +123,7 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
 
 export const DELETE: APIRoute = async ({ params, request, locals }) => {
   try {
+    requireRole(locals, ['owner']);
     requireSession(locals);
 
     const { id } = params;
