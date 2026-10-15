@@ -2,7 +2,7 @@
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import InventoryStats from '../../../components/inventory/InventoryStats.svelte';
 import StockAlerts from '../../../components/inventory/StockAlerts.svelte';
-import PredictionCard from '../../../components/inventory/PredictionCard.svelte';
+import StockVsMinCard from '../../../components/inventory/StockVsMinCard.svelte';
 import InventoryManager from '../../../components/inventory/InventoryManager.svelte';
 import RecommendationContainer from '../../../components/ai/RecommendationContainer.svelte';
 import { inventory } from '../../../stores/inventory.svelte';
@@ -22,7 +22,7 @@ import { inventory } from '../../../stores/inventory.svelte';
       </div>
       <div class="grid-side">
         <RecommendationContainer client:load />
-        <PredictionCard client:load items={inventory.items} />
+        <StockVsMinCard client:load items={inventory.items} />
       </div>
     </div>
 

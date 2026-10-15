@@ -3,10 +3,9 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { domainConfig } from '../../../lib/domain.config';
 import { resolveSession } from '../../../lib/auth/session';
 
-export const GET: APIRoute = async ({ request, cookies, locals }) => {
+export const GET: APIRoute = async ({ cookies, locals }) => {
   try {
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = domainConfig.instanceId ?? 'default';
 
     const token = cookies.get('fize_session')?.value;
     const adapter = createStorageAdapter(locals);

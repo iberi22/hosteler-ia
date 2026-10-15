@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
-import { domainConfig } from '../../../../lib/domain.config';
-import { requireSession, AuthError } from '../../../../lib/auth/session';
+import { requireSession } from '../../../../lib/auth/session';
+import { resolveTenant, tenantOf, authErrorResponse } from '../../../../lib/auth/tenant';
 import { isOrderStatus } from '../../../../lib/orderStateMachine';
 import {
   PAYMENT_METHODS,
@@ -58,12 +58,7 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
       );
     }
 
-    const url = new URL(request.url);
-    const instanceId =
-      validation.data.instance_id ??
-      url.searchParams.get('instance_id') ??
-      domainConfig.instanceId ??
-      'default';
+    const instanceId = resolveTenant(locals, request, validation.data.instance_id);
 
     const adapter = createStorageAdapter(locals);
     const order = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
@@ -126,9 +121,8 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
 
     return json({ order: updated, payment }, 201);
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     // assertTransition lanza si la transicion no es valida
     if (err instanceof Error && err.message) {
       return json({ error: err.message }, 400);
@@ -146,14 +140,13 @@ export const GET: APIRoute = async ({ params, locals }) => {
     if (!id) return json({ error: 'Order id is required' }, 400);
 
     const adapter = createStorageAdapter(locals);
-    const all = await adapter.list('payment', domainConfig.instanceId ?? 'default');
+    const all = await adapter.list('payment', tenantOf(locals));
     const payments = (all as Array<Record<string, unknown>>).filter((p) => p.orderId === id);
 
     return json({ payments }, 200);
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return json({ error: 'Internal Server Error' }, 500);
   }
 };

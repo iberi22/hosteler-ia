@@ -1,9 +1,9 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
 import type { DomainRecord } from '../../../lib/domain';
 import { isOrderStatus } from '../../../lib/orderStateMachine';
+import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const orderItemSchema = z.object({
   menuItemId: z.string().min(1, { message: 'menuItemId is required' }),
@@ -26,7 +26,7 @@ function genId(): string {
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
     const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = resolveTenant(locals, request);
     const statusFilter = url.searchParams.get('status');
 
     if (statusFilter && !isOrderStatus(statusFilter)) {
@@ -49,7 +49,9 @@ export const GET: APIRoute = async ({ request, locals }) => {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch {
+  } catch (err) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -84,8 +86,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    const url = new URL(request.url);
-    const instanceId = data.instance_id ?? url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const adapter = createStorageAdapter(locals);
 
@@ -138,7 +139,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       status: 201,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch {
+  } catch (err) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

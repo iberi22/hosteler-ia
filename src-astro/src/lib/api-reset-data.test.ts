@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { GET as previewReset, POST as resetData } from '../pages/api/reset-data/index';
 import { getMemoryAdapter } from './domain';
+import type { SessionUser } from './auth/session';
+import { apiContext } from './testing/apiContext';
 import {
   canReset,
   resetDenial,
@@ -11,11 +13,11 @@ import {
   PROTECTED_ENTITIES,
 } from './resetData';
 
-const OWNER = { id: 'u-owner', email: 'owner@fize.app', name: 'Owner', role: 'owner' };
-const STAFF = { id: 'u-staff', email: 'staff@fize.app', name: 'Staff', role: 'staff' };
+const OWNER: SessionUser = { id: 'u-owner', email: 'owner@fize.app', name: 'Owner', role: 'owner' };
+const STAFF: SessionUser = { id: 'u-staff', email: 'staff@fize.app', name: 'Staff', role: 'staff' };
 
-const ctx = (req: Request, user: unknown = OWNER) =>
-  ({ request: req, params: {}, locals: { user, instanceId: 'default' } }) as any;
+const ctx = (req: Request, user: SessionUser | null = OWNER) =>
+  apiContext({ request: req, params: {}, user, instanceId: 'default' });
 
 const postReq = (body?: unknown) =>
   new Request('http://localhost/api/reset-data', {
@@ -27,16 +29,14 @@ const postReq = (body?: unknown) =>
 let seq = 0;
 const seed = async (entity: string, over: Record<string, unknown> = {}) => {
   seq++;
-  const now = new Date().toISOString();
-  const record = {
+  const timestamp = new Date().toISOString();
+  return getMemoryAdapter().create(entity, {
     id: `${entity}-${seq}`,
     instance_id: 'default',
-    created_at: now,
-    updated_at: now,
+    created_at: timestamp,
+    updated_at: timestamp,
     ...over,
-  };
-  await getMemoryAdapter().create(entity, record as never);
-  return record;
+  });
 };
 
 describe('reset-data — reglas puras', () => {
@@ -49,7 +49,7 @@ describe('reset-data — reglas puras', () => {
 
   it('user y session nunca son reseteables', () => {
     for (const protectedEntity of PROTECTED_ENTITIES) {
-      expect(RESETTABLE_ENTITIES).not.toContain(protectedEntity as never);
+      expect(RESETTABLE_ENTITIES as readonly string[]).not.toContain(protectedEntity);
     }
   });
 
@@ -104,7 +104,7 @@ describe('reset-data — reglas puras', () => {
       instance_id: 'otro-restaurante',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    } as never);
+    });
 
     // `list` ya viene filtrado por instance: el plan solo ve lo suyo.
     const plan = await planReset(adapter, 'default', ['order']);
@@ -199,21 +199,20 @@ describe('reset-data API', () => {
     expect((await getMemoryAdapter().list('menuItem', 'default'))).toHaveLength(0);
   });
 
-  it('un instance_id en el body no cambia el instance que se borra', async () => {
+  it('un instance_id ajeno en el body se rechaza con 403 y no borra nada', async () => {
     await seed('order');
     await getMemoryAdapter().create('order', {
       id: 'order-ajeno',
       instance_id: 'otro-restaurante',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    } as never);
+    });
 
     const res = await resetData(ctx(postReq({ confirm: true, instance_id: 'otro-restaurante' })));
-    const body = await res.json();
-    // El instance sale de locals (la sesion), no del body.
-    expect(body.instanceId).toBe('default');
+    // El instance sale de locals (la sesion): pedir otro es 403, no se borra ni lo ajeno ni lo propio.
+    expect(res.status).toBe(403);
     expect((await getMemoryAdapter().list('order', 'otro-restaurante'))).toHaveLength(1);
-    expect((await getMemoryAdapter().list('order', 'default'))).toHaveLength(0);
+    expect((await getMemoryAdapter().list('order', 'default'))).toHaveLength(1);
   });
 
   it('pedir solo entidades protegidas responde 400 y no borra', async () => {

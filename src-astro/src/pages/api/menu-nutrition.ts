@@ -7,7 +7,8 @@ import { loadPublicNutrition } from '../../lib/publicMenuNutrition';
 
 export const GET: APIRoute = async ({ request, locals }) => {
   const url = new URL(request.url);
-  const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId;
+  // Ruta publica (sin sesion): ignora el `?instance_id=` del cliente y sirve la instancia del despliegue.
+  const instanceId = locals.instanceId ?? domainConfig.instanceId;
   const slug = url.searchParams.get('slug');
   const restaurantId = url.searchParams.get('restaurantId');
   const adapter = createStorageAdapter(locals);

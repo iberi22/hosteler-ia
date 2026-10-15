@@ -4,7 +4,7 @@ import { domainConfig } from '../../../lib/domain.config';
 
 // PUBLIC endpoint (no auth) — exposes only client-safe fields:
 // table number + capacity, restaurant public info, active menu items.
-export const GET: APIRoute = async ({ params, request, locals }) => {
+export const GET: APIRoute = async ({ params, locals }) => {
   try {
     const { code } = params;
     if (!code) {
@@ -14,8 +14,8 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    // Ruta publica (sin sesion): ignora el `?instance_id=` del cliente y sirve la instancia del despliegue.
+    const instanceId = locals.instanceId ?? domainConfig.instanceId ?? 'default';
 
     const adapter = createStorageAdapter(locals);
     const tables = await adapter.list('table', instanceId);

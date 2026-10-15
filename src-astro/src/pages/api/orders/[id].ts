@@ -1,19 +1,14 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
 import { isOrderStatus, assertTransition, type OrderStatus } from '../../../lib/orderStateMachine';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
+import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const patchOrderSchema = z.object({
   note: z.string().optional(),
   tableId: z.string().min(1).optional(),
 });
-
-function resolveInstance(request: Request): string {
-  const url = new URL(request.url);
-  return url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
-}
 
 function isGone(record: Record<string, unknown> | null): boolean {
   return !record || Boolean(record.deleted_at);
@@ -36,7 +31,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     }
 
     const adapter = createStorageAdapter(locals);
-    const record = (await adapter.get('order', id, resolveInstance(request))) as Record<string, unknown> | null;
+    const record = (await adapter.get('order', id, resolveTenant(locals, request))) as Record<string, unknown> | null;
 
     if (isGone(record)) return notFound();
 
@@ -44,7 +39,9 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch {
+  } catch (err) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -96,7 +93,7 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
-    const instanceId = resolveInstance(request);
+    const instanceId = resolveTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
 
@@ -119,12 +116,8 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return new Response(JSON.stringify({ error: (err as { message?: string }).message ?? 'Authentication required' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -144,7 +137,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const instanceId = resolveInstance(request);
+    const instanceId = resolveTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
 
@@ -174,12 +167,8 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return new Response(JSON.stringify({ error: (err as { message?: string }).message ?? 'Authentication required' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

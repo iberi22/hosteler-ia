@@ -3,10 +3,10 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { domainConfig } from '../../../lib/domain.config';
 import { destroySession } from '../../../lib/auth/session';
 
-export const POST: APIRoute = async ({ request, cookies, locals }) => {
+export const POST: APIRoute = async ({ cookies, locals }) => {
   try {
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    // La sesion vive en la instancia del despliegue; el `?instance_id=` del cliente no elige donde se borra.
+    const instanceId = domainConfig.instanceId ?? 'default';
 
     const token = cookies.get('fize_session')?.value;
     if (token) {

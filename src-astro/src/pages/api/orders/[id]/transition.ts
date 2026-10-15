@@ -1,11 +1,11 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
-import { domainConfig } from '../../../../lib/domain.config';
 import { isOrderStatus, assertTransition, type OrderStatus } from '../../../../lib/orderStateMachine';
 import { deductRecipe } from '../../../../lib/recipes';
 import type { StorageAdapter } from '../../../../lib/domain';
-import { requireSession, AuthError } from '../../../../lib/auth/session';
+import { requireSession } from '../../../../lib/auth/session';
+import { resolveTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 async function deductOrderStock(
   adapter: StorageAdapter,
@@ -69,8 +69,7 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = resolveTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
@@ -126,12 +125,8 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return new Response(JSON.stringify({ error: (err as { message?: string }).message ?? 'Authentication required' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

@@ -20,8 +20,8 @@ test.describe('Inventory Recommendations (Local Mode)', () => {
     // Ensure the page title is visible
     await expect(page.locator('h1.page-title', { hasText: 'Inventario' })).toBeVisible();
 
-    // Verify PredictionCard is visible (ensure side grid is present)
-    await expect(page.locator('.pred-title')).toBeVisible();
+    // Verify the stock-vs-minimum card is visible (ensure side grid is present)
+    await expect(page.locator('.svm-title')).toBeVisible();
     
     // The recommendation panel should not be visible as it handles local 404 cleanly without error box
     const panel = page.locator('section[aria-label="Recomendaciones Fi\'ze"]');

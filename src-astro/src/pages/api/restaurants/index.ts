@@ -1,8 +1,8 @@
 import type { APIRoute } from "astro";
 import { z } from "zod";
-import { AuthError, requireSession } from "../../../lib/auth/session";
+import { requireSession } from "../../../lib/auth/session";
+import { resolveTenant, authErrorResponse } from "../../../lib/auth/tenant";
 import type { DomainRecord } from "../../../lib/domain";
-import { domainConfig } from "../../../lib/domain.config";
 import { createStorageAdapter } from "../../../lib/storageAdapter";
 import {
   isSlugTaken,
@@ -26,23 +26,22 @@ function genId(): string {
 
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
-    const url = new URL(request.url);
-    const instanceId =
-      url.searchParams.get("instance_id") ??
-      domainConfig.instanceId ??
-      "default";
+    // El tenant sale de la sesion (locals.instanceId), nunca de `?instance_id=`: pedir otra instancia es 403.
+    const instanceId = resolveTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const list = await adapter.list("restaurant", instanceId);
 
     // Filter out soft-deleted records
-    const active = list.filter((item: any) => !item.deleted_at);
+    const active = list.filter((item) => !(item as Record<string, unknown>).deleted_at);
 
     return new Response(JSON.stringify(active), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
@@ -90,12 +89,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       });
     }
 
-    const url = new URL(request.url);
-    const instanceId =
-      data.instance_id ??
-      url.searchParams.get("instance_id") ??
-      domainConfig.instanceId ??
-      "default";
+    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const slugError = validateSlug(data.slug);
     if (slugError) {
@@ -132,24 +126,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    if (
-      error instanceof AuthError ||
-      (error &&
-        typeof error === "object" &&
-        (error as { status?: number }).status === 401)
-    ) {
-      return new Response(
-        JSON.stringify({
-          error:
-            (error as { message?: string }).message ??
-            "Authentication required",
-        }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
