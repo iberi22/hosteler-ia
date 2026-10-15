@@ -24,6 +24,9 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// El parser del `_headers` y la comprobacion de las cabeceras de seguridad viven en un modulo aparte para
+// poder testearlos sin montar un dist/client: el mismo parser que reescribe el archivo los valida.
+import { CABECERAS_EXIGIDAS, parsearHeaders, problemasDeSeguridad } from './securityHeadersCheck.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const client = join(root, 'dist', 'client');
@@ -101,21 +104,7 @@ const paginas = htmls(client).map((file) => {
 
 // Parseo del _headers que deja el build (public/_headers + lo que inyecta el adaptador).
 // Cada bloque: { ruta, cabeceras: [[nombre, valor], ...] } en el mismo orden del archivo.
-const bloques = [];
-let comentarioPendiente = [];
-for (const linea of readFileSync(headersFile, 'utf8').split('\n')) {
-  if (linea.trim() === '' || linea.trimStart().startsWith('#')) {
-    if (linea.trim() !== '') comentarioPendiente.push(linea);
-    continue;
-  }
-  if (/^\s/.test(linea)) {
-    const [nombre, ...resto] = linea.trim().split(':');
-    bloques[bloques.length - 1]?.cabeceras.push([nombre, resto.join(':').trim()]);
-  } else {
-    bloques.push({ ruta: linea.trim(), cabeceras: [], comentario: comentarioPendiente });
-    comentarioPendiente = [];
-  }
-}
+const bloques = parsearHeaders(readFileSync(headersFile, 'utf8'));
 
 const cspPorRuta = new Map();
 for (const { rutas, politica } of paginas) {
@@ -186,8 +175,23 @@ if (faltan.length > 0) {
   process.exit(1);
 }
 
+// Las cabeceras de transporte/seguridad no se generan aqui (viven en public/_headers, que el build copia a
+// dist/client/_headers), pero si faltan el build FALLA: una pagina prerenderizada servida sin HSTS o sin
+// nosniff no se nota hasta que ya hay trafico en HTTP. Se comprueba el bloque global `/*` (no vale que
+// esten en una ruta suelta) y que ningun otro bloque las repita (Cloudflare concatenaria los valores).
+// Los valores canonicos del middleware estan en src/lib/securityHeaders.ts; los tests comparan las dos
+// copias, y scripts/securityHeadersCheck.mjs tiene toda la logica.
+const problemas = problemasDeSeguridad(escrito);
+if (problemas.length > 0) {
+  for (const problema of problemas) console.error(`[gen-csp-headers] ${problema}`);
+  console.error('[gen-csp-headers] public/_headers debe declarar las cabeceras de seguridad en `/*` y solo alli.');
+  console.error('[gen-csp-headers] el build se aborta: no se publican paginas sin HSTS/nosniff.');
+  process.exit(1);
+}
+
 const maxLinea = Math.max(...[...cspPorRuta.values()].map((p) => p.length + '  Content-Security-Policy: '.length));
 console.log(
   `[gen-csp-headers] ${paginas.length} paginas prerenderizadas con CSP en _headers (${anadidas} reglas nuevas, ` +
-    `linea mas larga ${maxLinea}/${MAX_LINE_LENGTH}, ${metasLimpiados} <meta> sin frame-ancestors).`,
+    `linea mas larga ${maxLinea}/${MAX_LINE_LENGTH}, ${metasLimpiados} <meta> sin frame-ancestors, ` +
+    `${CABECERAS_EXIGIDAS.length} cabeceras de seguridad).`,
 );

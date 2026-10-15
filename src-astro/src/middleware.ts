@@ -5,6 +5,7 @@ import { resolveSession, type SessionUser } from './lib/auth/session';
 import { isPublicPath, resolveTier, decideAccess } from './middlewareGating';
 import { withNoTransform, isHtml } from './lib/noTransform';
 import { CSP_HTML_FALLBACK, CSP_NONE } from './lib/csp';
+import { HSTS_VALUE, X_CONTENT_TYPE_OPTIONS_VALUE, REFERRER_POLICY_VALUE } from './lib/securityHeaders';
 
 // Nota sobre Content-Security-Policy (F12):
 // La politica de verdad la genera Astro por pagina (`security.csp` en astro.config.mjs): cabecera en las
@@ -61,8 +62,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Cabeceras de transporte/seguridad: van en TODA respuesta del Worker (HTML, API, 401 y redirecciones).
+  // Las mismas viven en public/_headers (bloque global `/*`) para lo que sirve Workers Assets sin pasar por
+  // aqui (ver src/lib/securityHeaders.ts). Ninguna de las tres se pisa: si la respuesta ya trae un valor
+  // (una pagina que la decide, un endpoint, un proxy por delante), se respeta. `Headers.has()` no distingue
+  // mayusculas, como manda la RFC 9110: una respuesta con `Referrer-Policy: no-referrer` o con
+  // `x-content-type-options` en minusculas sigue con su valor.
+  if (!response.headers.has('Strict-Transport-Security')) {
+    response.headers.set('Strict-Transport-Security', HSTS_VALUE);
+  }
+  if (!response.headers.has('X-Content-Type-Options')) {
+    response.headers.set('X-Content-Type-Options', X_CONTENT_TYPE_OPTIONS_VALUE);
+  }
+  if (!response.headers.has('Referrer-Policy')) {
+    response.headers.set('Referrer-Policy', REFERRER_POLICY_VALUE);
+  }
   response.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
   response.headers.set('X-Frame-Options', 'DENY');
   if (!response.headers.has('Content-Security-Policy')) {

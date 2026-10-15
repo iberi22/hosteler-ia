@@ -12,9 +12,21 @@ import { test, expect, type Page } from '@playwright/test';
 // Y una prueba de que no se rompe nada: sin violaciones de CSP en consola y con la isla hidratada
 // (el runtime de hidratacion de Astro va INLINE: si el hash no cuadra, el navegador lo bloquea y la
 // pagina se queda en HTML muerto).
+//
+// F12 — transporte. Las mismas dos rutas tienen que mandar HSTS + nosniff + Referrer-Policy: el middleware
+// en las SSR y la regla global `/*` de public/_headers (que gen-csp-headers.mjs deja intacta) en las
+// prerenderizadas/estaticas. Se comprueban JUNTAS porque es justo el fallo silencioso que se cuela: una de
+// las dos vias se actualiza y la otra no.
 
 const PRERENDERIZADAS = ['/', '/local/', '/offline/'];
 const SSR = ['/login', '/register', '/pair'];
+
+/** Las tres de F12, con el valor exacto. HSTS: un ano, subdominios y preload (ver src/lib/securityHeaders.ts). */
+const CABECERAS_SEGURIDAD: Record<string, string> = {
+  'strict-transport-security': 'max-age=31536000; includeSubDomains; preload',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+};
 
 /**
  * Chromium registra en consola cualquier `content-security-policy`, incluido el aviso de que
@@ -58,6 +70,26 @@ for (const ruta of [...PRERENDERIZADAS, ...SSR]) {
     expect(connectSrc).toContain("'self'");
   });
 }
+
+for (const ruta of [...PRERENDERIZADAS, ...SSR]) {
+  test(`cabeceras de transporte presentes y con el valor exacto: ${ruta}`, async ({ page }) => {
+    const res = await page.request.get(ruta);
+    const cabeceras = res.headers();
+    for (const [nombre, valor] of Object.entries(CABECERAS_SEGURIDAD)) {
+      expect(cabeceras[nombre], `sin ${nombre} en ${ruta}`).toBe(valor);
+    }
+  });
+}
+
+// Un 302 del gating (sin sesion, /dashboard) tambien es una respuesta HTTPS: si no llevara HSTS, el
+// navegador podria quedarse con esa conexion sin la politica. Es el caso que no cubria ningun test.
+test('cabeceras de transporte en la redireccion de /dashboard sin sesion', async ({ page }) => {
+  const res = await page.request.get('/dashboard', { maxRedirects: 0 });
+  expect(res.status()).toBe(302);
+  for (const [nombre, valor] of Object.entries(CABECERAS_SEGURIDAD)) {
+    expect(res.headers()[nombre], `sin ${nombre} en el 302 de /dashboard`).toBe(valor);
+  }
+});
 
 test('CSP: la landing prerenderizada ejecuta su script inline y su isla', async ({ page }) => {
   const violaciones: string[] = [];
