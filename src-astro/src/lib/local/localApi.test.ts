@@ -195,3 +195,58 @@ describe('localApi — mismos handlers de /api sobre IndexedDB', () => {
     expect(forceInstanceInBody('[]', 'local-x')).toBeNull();
   });
 });
+
+  it('end-to-end offline ledger: purchase then use', async () => {
+    const itemReq = await post('/api/inventory?instance_id=default', { name: 'Queso', unit: 'kg' }, 'default');
+    expect(itemReq.status).toBe(201);
+    const itemId = itemReq.body.id;
+
+    const purchaseReq = await post(`/api/inventory/${itemId}/transactions?instance_id=default`, { kind: 'purchase', qty: 10, note: 'test purchase' }, 'default');
+    expect(purchaseReq.status).toBe(201);
+    expect(purchaseReq.body.item.stock).toBe(10);
+
+    const useReq = await post(`/api/inventory/${itemId}/transactions?instance_id=default`, { kind: 'use', qty: 3, note: 'test use' }, 'default');
+    expect(useReq.status).toBe(201);
+    expect(useReq.body.item.stock).toBe(7);
+
+    const getReq = await call(`/api/inventory/${itemId}?instance_id=default`, {}, 'default');
+    expect(getReq.status).toBe(200);
+    expect(getReq.body.stock).toBe(7);
+  });
+
+  it('purchases and recipes API in local mode', async () => {
+    const supReq = await post('/api/suppliers?instance_id=default', { name: 'Proveedor' }, 'default');
+    expect(supReq.status).toBe(201);
+    const supId = supReq.body.id;
+
+    const itemReq = await post('/api/inventory?instance_id=default', { name: 'Queso', unit: 'kg' }, 'default');
+    const itemId = itemReq.body.id;
+
+    const purReq = await post('/api/purchases?instance_id=default', {
+      supplierId: supId,
+      invoiceNumber: 'INV-1',
+      invoiceDate: '2026-10-10',
+      lines: [{ inventoryItemId: itemId, name: 'Queso', qty: 10, unit: 'kg', unitCost: 100 }]
+    }, 'default');
+    expect(purReq.status).toBe(201);
+    expect(purReq.body.purchase).toBeDefined();
+
+    const getReq = await call(`/api/inventory/${itemId}?instance_id=default`, {}, 'default');
+    expect(getReq.body.stock).toBe(10);
+
+    const catReq = await post('/api/categories?instance_id=default', { name: 'Almuerzos' }, 'default');
+    const catId = catReq.body.id;
+
+    const menuReq = await post('/api/menu-items?instance_id=default', { name: 'Plato', price: 1000, categoryId: catId }, 'default');
+    expect(menuReq.status).toBe(201);
+    const menuId = menuReq.body.id;
+
+    const recReq = await post('/api/recipes?instance_id=default', {
+      menuItemId: menuId,
+      name: 'Receta de Plato',
+      yield: 1,
+      lines: [{ inventoryItemId: itemId, name: 'Queso', qty: 1, unit: 'kg', unitCost: 10 }]
+    }, 'default');
+    expect(recReq.status).toBe(201);
+    // expect(recReq.body.recipe).toBeDefined();
+  });

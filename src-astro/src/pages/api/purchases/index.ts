@@ -39,8 +39,8 @@ export const GET: APIRoute = async ({ locals }) => {
     requireSession(locals);
     const adapter = createStorageAdapter(locals);
     const [purchases, suppliers] = await Promise.all([
-      adapter.list('purchase', domainConfig.instanceId ?? 'default'),
-      adapter.list('supplier', domainConfig.instanceId ?? 'default'),
+      adapter.list('purchase', (locals.instanceId ?? domainConfig.instanceId ?? 'default')),
+      adapter.list('supplier', (locals.instanceId ?? domainConfig.instanceId ?? 'default')),
     ]);
     const byId = new Map(suppliers.map((s) => [s.id, s as Record<string, unknown>]));
     const rows = (purchases as Array<Record<string, unknown>>)
@@ -154,7 +154,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: 'Validation failed', details: parsed.error.issues.map((i) => i.message) }, 422);
     }
 
-    const instanceId = domainConfig.instanceId ?? 'default';
+    const instanceId = (locals.instanceId ?? domainConfig.instanceId ?? 'default');
     const adapter = createStorageAdapter(locals);
 
     const supplier = await adapter.get('supplier', parsed.data.supplierId, instanceId);

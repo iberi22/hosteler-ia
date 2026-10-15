@@ -62,10 +62,10 @@ export function clearInventory() {
 }
 
 function persist() {
-  if (typeof window === 'undefined') return;
+  if (!isLocalPage()) return;
   try {
     localStorage.setItem(
-      'fize:inventory',
+      inventoryCacheKey(cacheInstanceId),
       JSON.stringify({ items: inventory.items, lastUpdated: inventory.lastUpdated }),
     );
   } catch {
@@ -73,10 +73,19 @@ function persist() {
   }
 }
 
-export function hydrateInventory() {
-  if (typeof window === 'undefined') return;
+// La cache se guarda por local (instanceId): nunca mostrar el inventario de otro restaurante.
+export const inventoryCacheKey = (instanceId: string) => `fize:inventory:${instanceId}`;
+
+// Instancia efectiva (identidad local) con la que se guarda la cache; la fija refreshInventoryFromApi.
+let cacheInstanceId: string = domainConfig.instanceId ?? 'default';
+
+// Solo en el modo local: el dashboard remoto comparte la store y no debe usar la cache local.
+const isLocalPage = () => typeof window !== 'undefined' && window.location.pathname.startsWith('/local/');
+
+export function hydrateInventory(instanceId: string = cacheInstanceId) {
+  if (!isLocalPage()) return;
   try {
-    const raw = localStorage.getItem('fize:inventory');
+    const raw = localStorage.getItem(inventoryCacheKey(instanceId ?? 'default'));
     if (!raw) return;
     const d = JSON.parse(raw);
     inventory.items = d.items ?? [];
@@ -90,19 +99,24 @@ export function hydrateInventory() {
 import type { DomainRecord } from '../lib/domain';
 import { mapInventoryItem, fetchCollection } from '../lib/storeSync';
 import { domainConfig } from '../lib/domain.config';
+import { loadIdentity } from '../lib/local/identity';
+import { apiFetch } from '../lib/api-client';
 
 export function applyInventoryRecords(records: DomainRecord[]) {
   setItems(records.map(mapInventoryItem));
 }
 
-export async function refreshInventoryFromApi(fetchFn: typeof fetch = fetch, instanceId = domainConfig.instanceId) {
+export async function refreshInventoryFromApi(fetchFn: typeof fetch = apiFetch as unknown as typeof fetch, instanceId = domainConfig.instanceId) {
   setLoading(true);
+  // La cache va por la identidad local real: el router local fija ese instance_id en cada peticion.
+  const ident = await loadIdentity().catch(() => null);
+  cacheInstanceId = ident?.instanceId ?? instanceId ?? 'default';
   try {
     const records = await fetchCollection(fetchFn, 'inventory', instanceId);
     applyInventoryRecords(records);
     return true;
   } catch {
-    if (inventory.items.length === 0) hydrateInventory();
+    if (inventory.items.length === 0) hydrateInventory(cacheInstanceId);
     return false;
   } finally {
     setLoading(false);

@@ -20,12 +20,17 @@ import * as categoryById from '../../pages/api/categories/[id]';
 import * as menuItems from '../../pages/api/menu-items/index';
 import * as menuItemById from '../../pages/api/menu-items/[id]';
 import * as inventory from '../../pages/api/inventory/index';
+import * as inventoryById from '../../pages/api/inventory/[id]';
 import * as tables from '../../pages/api/tables/index';
 import * as tableById from '../../pages/api/tables/[id]';
 import * as orders from '../../pages/api/orders/index';
 import * as orderById from '../../pages/api/orders/[id]';
 import * as orderTransition from '../../pages/api/orders/[id]/transition';
 import * as orderPayment from '../../pages/api/orders/[id]/payment';
+import * as inventoryTransactions from '../../pages/api/inventory/[id]/transactions';
+import * as suppliers from '../../pages/api/suppliers/index';
+import * as purchases from '../../pages/api/purchases/index';
+import * as recipes from '../../pages/api/recipes/index';
 
 type RouteModule = Partial<Record<'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', APIRoute>>;
 
@@ -42,14 +47,19 @@ const ROUTES: LocalRoute[] = [
   { pattern: /^\/api\/categories\/([^/]+)\/?$/, params: ['id'], mod: categoryById },
   { pattern: /^\/api\/menu-items\/?$/, params: [], mod: menuItems },
   { pattern: /^\/api\/menu-items\/([^/]+)\/?$/, params: ['id'], mod: menuItemById },
-  // Solo para que el editor de platos liste insumos (vacio en el tramo 1); el inventario local llega en el tramo 2.
+  // El inventario local completo.
   { pattern: /^\/api\/inventory\/?$/, params: [], mod: inventory },
+  { pattern: /^\/api\/inventory\/([^/]+)\/?$/, params: ['id'], mod: inventoryById },
   { pattern: /^\/api\/tables\/?$/, params: [], mod: tables },
   { pattern: /^\/api\/tables\/([^/]+)\/?$/, params: ['id'], mod: tableById },
   { pattern: /^\/api\/orders\/?$/, params: [], mod: orders },
   { pattern: /^\/api\/orders\/([^/]+)\/?$/, params: ['id'], mod: orderById },
   { pattern: /^\/api\/orders\/([^/]+)\/transition\/?$/, params: ['id'], mod: orderTransition },
   { pattern: /^\/api\/orders\/([^/]+)\/payment\/?$/, params: ['id'], mod: orderPayment },
+  { pattern: /^\/api\/inventory\/([^/]+)\/transactions\/?$/, params: ['id'], mod: inventoryTransactions },
+  { pattern: /^\/api\/suppliers\/?$/, params: [], mod: suppliers },
+  { pattern: /^\/api\/purchases\/?$/, params: [], mod: purchases },
+  { pattern: /^\/api\/recipes\/?$/, params: [], mod: recipes },
 ];
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };

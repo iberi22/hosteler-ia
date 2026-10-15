@@ -23,7 +23,7 @@ export const GET: APIRoute = async ({ locals }) => {
   try {
     requireSession(locals);
     const adapter = createStorageAdapter(locals);
-    const rows = await adapter.list('supplier', domainConfig.instanceId ?? 'default');
+    const rows = await adapter.list('supplier', (locals.instanceId ?? domainConfig.instanceId ?? 'default'));
     return json((rows as Array<Record<string, unknown>>).sort((a, b) => String(a.name).localeCompare(String(b.name))), 200);
   } catch (err) {
     if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const now = new Date().toISOString();
     const record: DomainRecord = {
       id: `sup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      instance_id: domainConfig.instanceId ?? 'default',
+      instance_id: (locals.instanceId ?? domainConfig.instanceId ?? 'default'),
       ...parsed.data,
       email: parsed.data.email || undefined,
       isActive: true,

@@ -2,16 +2,18 @@
   // StockAlerts.svelte — H1.04 — list of low/critical stock items
   import { Card, Badge, Button } from '@swal/ui';
   import type { InventoryItem } from '../../stores/inventory.svelte';
+  import { inventory } from '../../stores/inventory.svelte';
 
   interface Props {
     items?: InventoryItem[];
     onAdjust?: (item: InventoryItem) => void;
   }
 
-  let { items = [], onAdjust }: Props = $props();
+  let { items, onAdjust }: Props = $props();
+  const list = $derived(items ?? inventory.items);
 
-  const lowStock = $derived(items.filter(i => i.stock <= i.minStock));
-  const critical = $derived(items.filter(i => i.stock === 0));
+  const lowStock = $derived(list.filter(i => i.stock <= i.minStock));
+  const critical = $derived(list.filter(i => i.stock === 0));
 
   function stockPct(item: InventoryItem): number {
     if (item.minStock === 0) return 100;
