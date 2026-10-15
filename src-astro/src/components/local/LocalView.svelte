@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import MenuPage from '../menu/MenuPage.svelte';
   import RestaurantForm from '../settings/RestaurantForm.svelte';
+  import ProtectionCard from './ProtectionCard.svelte';
   import BackupCard from './BackupCard.svelte';
   import PublishCard from './PublishCard.svelte';
   import CartaQr from './CartaQr.svelte';
@@ -69,8 +70,11 @@
   </div>
 {:else}
   <div class="l-page wide">
+
     <h1 class="l-title">Mi local</h1>
     <RestaurantForm />
+    <ProtectionCard />
+
     <section class="l-card" aria-labelledby="eq-title">
       <h2 id="eq-title">Este equipo</h2>
       <p>Identificador del local: <span class="l-mono" data-testid="instance-id">{identity?.instanceId}</span></p>
