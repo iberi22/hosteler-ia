@@ -5,6 +5,7 @@ import { resolveSession, type SessionUser } from './lib/auth/session';
 import { isPublicPath, resolveTier, decideAccess } from './middlewareGating';
 import { withNoTransform, isHtml } from './lib/noTransform';
 import { CSP_HTML_FALLBACK, CSP_NONE } from './lib/csp';
+import { HSTS_VALUE, X_CONTENT_TYPE_OPTIONS_VALUE, REFERRER_POLICY_VALUE } from './lib/securityHeaders';
 
 // Nota sobre Content-Security-Policy (F12):
 // La politica de verdad la genera Astro por pagina (`security.csp` en astro.config.mjs): cabecera en las
@@ -61,8 +62,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Cabeceras de transporte/seguridad: van en TODA respuesta del Worker (HTML, API, 401 y redirecciones).
+  // Las mismas viven en public/_headers para lo que sirve Workers Assets sin pasar por aqui (ver
+  // src/lib/securityHeaders.ts). HSTS no se pisa nunca: si una respuesta ya la trae, se respeta.
+  if (!response.headers.has('Strict-Transport-Security')) {
+    response.headers.set('Strict-Transport-Security', HSTS_VALUE);
+  }
+  response.headers.set('X-Content-Type-Options', X_CONTENT_TYPE_OPTIONS_VALUE);
+  response.headers.set('Referrer-Policy', REFERRER_POLICY_VALUE);
   response.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
   response.headers.set('X-Frame-Options', 'DENY');
   if (!response.headers.has('Content-Security-Policy')) {

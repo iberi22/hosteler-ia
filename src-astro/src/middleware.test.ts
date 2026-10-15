@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { onRequest } from './middleware';
 import { isPublicPath, resolveTier, decideAccess } from './middlewareGating';
 import type { SessionUser } from './lib/auth/session';
+import { HSTS_VALUE } from './lib/securityHeaders';
 
 const user: SessionUser = { id: 'u1', email: 'a@fize.app', name: 'A', role: 'owner' };
 
@@ -72,6 +73,51 @@ describe('middleware gating', () => {
     expect(res.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
     expect(res.headers.get('Permissions-Policy')).toBe('camera=(self), microphone=(), geolocation=()');
     expect(res.headers.get('X-Frame-Options')).toBe('DENY');
+  });
+
+  // F12 — HSTS. Las rutas SSR no pasan por `_headers` (eso solo lo aplica Workers Assets), asi que la
+  // cabecera la tiene que poner el middleware en CADA respuesta, incluidas las que no llegan a la pagina
+  // (401 de la API y redireccion a /login): son respuestas HTTPS y el navegador las tiene en cuenta.
+  it('pone HSTS en todas las respuestas, tambien en 401 y redirecciones', async () => {
+    const ctx = (path: string, method = 'GET') => ({
+      url: new URL(`http://localhost${path}`),
+      cookies: { get: () => undefined },
+      request: { method },
+      locals: {},
+      redirect: (to: string) => new Response(null, { status: 302, headers: { Location: to } }),
+    });
+    const ok = async () => new Response('ok');
+    const denegado = async () =>
+      new Response(JSON.stringify({ error: 'no' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    const redirigido = async () => new Response(null, { status: 302, headers: { Location: '/login' } });
+
+    const res = await (onRequest as any)(ctx('/'), ok);
+    expect(res.headers.get('Strict-Transport-Security')).toBe(HSTS_VALUE);
+    expect(HSTS_VALUE).toBe('max-age=31536000; includeSubDomains; preload');
+
+    const resApi = await (onRequest as any)(ctx('/api/menu-items'), denegado);
+    expect(resApi.status).toBe(401);
+    expect(resApi.headers.get('Strict-Transport-Security')).toBe(HSTS_VALUE);
+
+    const resRedir = await (onRequest as any)(ctx('/dashboard'), redirigido);
+    expect(resRedir.status).toBe(302);
+    expect(resRedir.headers.get('Strict-Transport-Security')).toBe(HSTS_VALUE);
+  });
+
+  it('no pisa un HSTS que ya venga puesto (mismo criterio que con el CSP)', async () => {
+    const context = {
+      url: new URL('http://localhost/'),
+      cookies: { get: () => undefined },
+      locals: {},
+      redirect: (to: string) => new Response(null, { status: 302, headers: { Location: to } }),
+    };
+    const propio = 'max-age=60';
+    const next = async () => new Response('ok', { headers: { 'Strict-Transport-Security': propio } });
+    const res = await (onRequest as any)(context, next);
+    expect(res.headers.get('Strict-Transport-Security')).toBe(propio);
   });
 });
 

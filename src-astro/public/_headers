@@ -1,3 +1,11 @@
+# Cabeceras de transporte/seguridad para todo lo que sirve Workers Assets (estaticos y prerenderizadas).
+# El middleware (src/middleware.ts) pone las mismas en las respuestas SSR: `_headers` NO se aplica a las
+# respuestas del Worker. Valores en src/lib/securityHeaders.ts; scripts/gen-csp-headers.mjs aborta el build
+# si este bloque desaparece. HSTS solo lo aplica el navegador sobre HTTPS (en el nodo local por HTTP se ignora).
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
 # Paginas estaticas (prerenderizadas): sin analitica inyectada por Cloudflare (ver src/lib/noTransform.ts).
 # Mantener el revalidado por defecto de los assets HTML: sin max-age el navegador cachearia a ojo.
 /

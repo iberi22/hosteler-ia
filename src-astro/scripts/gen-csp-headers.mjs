@@ -186,8 +186,20 @@ if (faltan.length > 0) {
   process.exit(1);
 }
 
+// Las cabeceras de transporte/seguridad no se generan aqui (viven en public/_headers, que el build copia a
+// dist/client/_headers), pero si faltan el build FALLA: una pagina prerenderizada servida sin HSTS o sin
+// nosniff no se nota hasta que ya hay trafico en HTTP. Los valores estan en src/lib/securityHeaders.ts.
+const OBLIGATORIAS = ['Strict-Transport-Security', 'X-Content-Type-Options', 'Referrer-Policy'];
+const sinSeguridad = OBLIGATORIAS.filter((nombre) => !new RegExp(`^\\s+${nombre}:\\s*\\S`, 'm').test(escrito));
+if (sinSeguridad.length > 0) {
+  console.error(`[gen-csp-headers] faltan cabeceras de seguridad en _headers: ${sinSeguridad.join(', ')}`);
+  console.error('[gen-csp-headers] public/_headers debe declararlas (regla `/*`); el build se aborta.');
+  process.exit(1);
+}
+
 const maxLinea = Math.max(...[...cspPorRuta.values()].map((p) => p.length + '  Content-Security-Policy: '.length));
 console.log(
   `[gen-csp-headers] ${paginas.length} paginas prerenderizadas con CSP en _headers (${anadidas} reglas nuevas, ` +
-    `linea mas larga ${maxLinea}/${MAX_LINE_LENGTH}, ${metasLimpiados} <meta> sin frame-ancestors).`,
+    `linea mas larga ${maxLinea}/${MAX_LINE_LENGTH}, ${metasLimpiados} <meta> sin frame-ancestors, ` +
+    `${OBLIGATORIAS.length} cabeceras de seguridad).`,
 );
