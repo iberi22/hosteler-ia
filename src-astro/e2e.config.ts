@@ -17,6 +17,7 @@ export default {
         },
       },
     },
+    // Live target runs conditionally only when E2E_LIVE_URL is present
     ...(process.env.E2E_LIVE_URL
       ? [
           {
