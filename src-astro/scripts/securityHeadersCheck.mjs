@@ -66,7 +66,13 @@ export function problemasDeSeguridad(texto) {
   /** @type {string[]} */
   const problemas = [];
   const bloques = parsearHeaders(texto);
-  const global = bloques.find((b) => b.ruta === '/*');
+  const globales = bloques.filter((b) => b.ruta === '/*');
+  if (globales.length > 1) {
+    problemas.push(
+      `hay ${globales.length} bloques \`/*\`: Cloudflare aplica todos y concatenaria las cabeceras repetidas; deja uno solo`,
+    );
+  }
+  const global = globales[0];
   if (!global) {
     problemas.push(
       'no existe el bloque global `/*`: lo que sirve Workers Assets saldria sin HSTS, sin nosniff y sin Referrer-Policy',

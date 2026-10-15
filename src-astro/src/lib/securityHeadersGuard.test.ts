@@ -159,4 +159,19 @@ describe('parsearHeaders (parser compartido con gen-csp-headers.mjs)', () => {
       ['Link', '<https://ejemplo.test/material>; rel=preconnect'],
     ]);
   });
+
+  it('rechaza un segundo bloque /* aunque repita una cabecera ya valida', () => {
+    const texto = [
+      '/*',
+      '  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload',
+      '  X-Content-Type-Options: nosniff',
+      '  Referrer-Policy: strict-origin-when-cross-origin',
+      '',
+      '/*',
+      '  X-Content-Type-Options: nosniff',
+      '',
+    ].join('\n');
+    const problemas = problemasDeSeguridad(texto);
+    expect(problemas.some((p) => p.includes('bloques `/*`'))).toBe(true);
+  });
 });

@@ -5,7 +5,7 @@
 //      respuesta, porque las respuestas del Worker NO pasan por `_headers`.
 //   2. Estaticos y paginas prerenderizadas (/ , /offline, /local/*): no pasan por el Worker; las pone
 //      public/_headers, que el build copia a dist/client/_headers. Ahora mismo hay una regla `/*` en ese
-//      archivo con las tres (y `/local` + `/local/*` las repiten porque documentan el modo sin middleware).
+//      archivo con las tres, SOLO en `/*` (repetirlas en otro bloque las concatenaria).
 //      scripts/gen-csp-headers.mjs aborta el build si `_headers` no las declara: una pagina sin HSTS no se
 //      nota hasta que ya hay trafico en HTTP.
 //
