@@ -5,6 +5,7 @@
   import SalesSummary from './SalesSummary.svelte';
   import TopItems from './TopItems.svelte';
   import LowStockPanel from './LowStockPanel.svelte';
+  import { apiFetch } from '../../lib/api-client';
   import {
     fetchCollection,
     mapOrder,
@@ -37,9 +38,9 @@
     try {
       // Fetches live data from endpoints: api/orders, api/menu-items, api/inventory
       const [rawOrders, rawMenu, rawInventory] = await Promise.all([
-        fetchCollection(fetch, 'orders'),
-        fetchCollection(fetch, 'menu-items'),
-        fetchCollection(fetch, 'inventory'),
+        fetchCollection(apiFetch, 'orders'),
+        fetchCollection(apiFetch, 'menu-items'),
+        fetchCollection(apiFetch, 'inventory'),
       ]);
 
       orders = rawOrders.map(mapOrder);

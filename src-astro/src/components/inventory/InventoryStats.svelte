@@ -2,18 +2,21 @@
   // InventoryStats.svelte — H1.04 — @swal/ui cards for inventory overview
   import { Card, Badge } from '@swal/ui';
   import type { InventoryItem } from '../../stores/inventory.svelte';
+  import { inventory } from '../../stores/inventory.svelte';
 
   interface Props {
     items?: InventoryItem[];
     lastUpdated?: number | null;
   }
 
-  let { items = [], lastUpdated = null }: Props = $props();
+  let { items, lastUpdated = null }: Props = $props();
+  // Sin prop, lee el store del navegador: en el prerender el store esta vacio.
+  const list = $derived(items ?? inventory.items);
 
-  const totalItems = $derived(items.length);
-  const lowStockCount = $derived(items.filter(i => i.stock <= i.minStock).length);
+  const totalItems = $derived(list.length);
+  const lowStockCount = $derived(list.filter(i => i.stock <= i.minStock).length);
   const totalValue = $derived(
-    items.reduce((acc, i) => acc + i.stock * i.costPerUnit, 0)
+    list.reduce((acc, i) => acc + i.stock * i.costPerUnit, 0)
   );
   const lastUpdatedStr = $derived(
     lastUpdated

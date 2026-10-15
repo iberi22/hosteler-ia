@@ -1,0 +1,40 @@
+---
+export const prerender = true;
+import LocalLayout from "../../layouts/LocalLayout.astro";
+import AnalyticsDashboard from "../../components/analytics/AnalyticsDashboard.svelte";
+---
+
+<LocalLayout title="Analítica — Fi'ze Dashboard (Local)">
+  <main class="analytics-page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/local/">← Inicio</a>
+      <span>/</span>
+      <span>Analítica</span>
+    </nav>
+
+    <AnalyticsDashboard client:load />
+  </main>
+</LocalLayout>
+
+<style>
+  .analytics-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--swal-text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+  .crumbs a {
+    color: var(--swal-accent-cyan);
+    text-decoration: none;
+  }
+  .crumbs a:hover { text-decoration: underline; }
+</style>

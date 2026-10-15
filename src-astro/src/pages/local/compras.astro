@@ -1,0 +1,59 @@
+---
+export const prerender = true;
+import LocalLayout from "../../layouts/LocalLayout.astro";
+import PurchaseManager from "../../components/purchases/PurchaseManager.svelte";
+---
+
+<LocalLayout title="Compras — Fi'ze Dashboard (Local)">
+  <main class="purchases-page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/local/">← Inicio</a>
+      <span>/</span>
+      <span>Compras</span>
+    </nav>
+
+    <header class="page-header">
+      <h1 class="page-title">Compras e insumos</h1>
+      <p class="sub">
+        Facturas de proveedor. Cada compra suma stock y actualiza el costo de los insumos,
+        que es lo que despues calcula el costo real de cada receta.
+      </p>
+    </header>
+
+    <PurchaseManager client:load />
+  </main>
+</LocalLayout>
+
+<style>
+  .purchases-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  .crumbs {
+    display: flex;
+    gap: 0.5rem;
+    color: var(--swal-text-muted);
+    font-size: 0.85rem;
+  }
+  .crumbs a {
+    color: var(--swal-accent-cyan);
+    text-decoration: none;
+  }
+  .crumbs a:hover { text-decoration: underline; }
+  .page-header {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0.5rem;
+  }
+  .page-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--swal-text, #e2e8f0);
+    margin: 0;
+  }
+  .sub { margin: 0.25rem 0 0; font-size: 0.85rem; opacity: 0.65; max-width: 46rem; color: var(--swal-text-secondary); }
+</style>

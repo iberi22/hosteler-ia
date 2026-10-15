@@ -48,8 +48,8 @@ export const GET: APIRoute = async ({ locals }) => {
   try {
     requireSession(locals);
     const adapter = createStorageAdapter(locals);
-    const recipes = await adapter.list('recipe', domainConfig.instanceId ?? 'default');
-    const items = await adapter.list('menuItem', domainConfig.instanceId ?? 'default');
+    const recipes = await adapter.list('recipe', (locals.instanceId ?? domainConfig.instanceId ?? 'default'));
+    const items = await adapter.list('menuItem', (locals.instanceId ?? domainConfig.instanceId ?? 'default'));
     const priceById = new Map(
       items.map((m) => [m.id, Number((m as Record<string, unknown>).price ?? 0)]),
     );
@@ -93,7 +93,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: 'Validation failed', details: parsed.error.issues.map((i) => i.message) }, 422);
     }
 
-    const instanceId = domainConfig.instanceId ?? 'default';
+    const instanceId = (locals.instanceId ?? domainConfig.instanceId ?? 'default');
     const adapter = createStorageAdapter(locals);
     const menuItem = await adapter.get('menuItem', parsed.data.menuItemId, instanceId);
     if (!menuItem) return json({ error: 'El plato no existe' }, 404);
