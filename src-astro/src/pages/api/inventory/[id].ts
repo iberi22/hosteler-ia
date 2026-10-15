@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { requireSession } from '../../../lib/auth/session';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const updateItemSchema = z.object({
   gosIngredientId: z.string().regex(/^gos:ingredient\/[^/]+$/).nullable().optional(),
@@ -33,7 +33,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     }
 
     const adapter = createStorageAdapter(locals);
-    const record = (await adapter.get('inventoryItem', id, resolveTenant(locals, request))) as Record<string, unknown> | null;
+    const record = (await adapter.get('inventoryItem', id, await resolveRequestTenant(locals, request))) as Record<string, unknown> | null;
 
     if (isGone(record)) return notFound();
 
@@ -54,6 +54,8 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`, que Zod descarta) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) {
@@ -95,7 +97,6 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
-    const instanceId = resolveTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('inventoryItem', id, instanceId)) as Record<string, unknown> | null;
 
@@ -129,7 +130,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('inventoryItem', id, instanceId)) as Record<string, unknown> | null;
 

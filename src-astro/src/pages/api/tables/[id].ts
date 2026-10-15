@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { requireSession } from '../../../lib/auth/session';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const updateTableSchema = z.object({
   number: z.number().int().positive({ message: 'Number must be a positive integer' }).optional(),
@@ -25,7 +25,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     }
 
     const adapter = createStorageAdapter(locals);
-    const record = (await adapter.get('table', id, resolveTenant(locals, request))) as Record<string, unknown> | null;
+    const record = (await adapter.get('table', id, await resolveRequestTenant(locals, request))) as Record<string, unknown> | null;
 
     if (isGone(record)) {
       return new Response(JSON.stringify({ error: 'Table not found' }), {
@@ -51,6 +51,8 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) {
@@ -84,7 +86,6 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
-    const instanceId = resolveTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('table', id, instanceId)) as Record<string, unknown> | null;
 
@@ -123,7 +124,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('table', id, instanceId)) as Record<string, unknown> | null;
 

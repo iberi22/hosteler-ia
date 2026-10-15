@@ -14,7 +14,7 @@ import {
   newNotificationDefaults,
   type Notification,
 } from '../../../lib/notifications';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 // Contrato heredado del legacy (legacy/app/api/notifications/route.ts):
 //
@@ -117,7 +117,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
     if (!query.ok) return json({ error: query.error }, 400);
 
     const adapter = createStorageAdapter(locals);
-    const all = (await adapter.list('notification', resolveTenant(locals, request))).map(toNotification);
+    const all = (await adapter.list('notification', await resolveRequestTenant(locals, request))).map(toNotification);
 
     // visibleToUser va ANTES del filtro y del contador: el usuario solo puede
     // ver lo suyo, y el badge no puede contar avisos de otra persona.
@@ -133,6 +133,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -147,10 +149,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    // El tenant se resuelve IGUAL que en el resto de endpoints (session/
-    // query/default) y no sale del body: un POST no puede escribir en el
-    // instance de otro restaurante.
-    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const adapter = createStorageAdapter(locals);
     const now = new Date().toISOString();
@@ -180,6 +178,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 export const PATCH: APIRoute = async ({ request, locals }) => {
   try {
     const user: SessionUser = requireSession(locals);
+    const instanceId = await resolveRequestTenant(locals, request);
     const url = new URL(request.url);
     const all = url.searchParams.get('all') === 'true';
 
@@ -187,7 +186,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
 
     const adapter = createStorageAdapter(locals);
     const mine = visibleToUser(
-      (await adapter.list('notification', resolveTenant(locals, request))).map(toNotification),
+      (await adapter.list('notification', instanceId)).map(toNotification),
       user.id,
     );
 
@@ -195,7 +194,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     let updated = 0;
     for (const n of mine) {
       if (n.isRead) continue;
-      await adapter.update('notification', n.id, { isRead: true, readAt: now }, resolveTenant(locals, request));
+      await adapter.update('notification', n.id, { isRead: true, readAt: now }, instanceId);
       updated++;
     }
 

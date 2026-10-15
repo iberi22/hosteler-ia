@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { requireSession } from '../../../lib/auth/session';
 import { requireRole } from '../../../lib/auth/requireRole';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const updateCategorySchema = z.object({
   name: z.string().min(1, { message: 'Name cannot be empty' }).optional(),
@@ -27,7 +27,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     }
 
     const adapter = createStorageAdapter(locals);
-    const record = (await adapter.get('category', id, resolveTenant(locals, request))) as Record<string, unknown> | null;
+    const record = (await adapter.get('category', id, await resolveRequestTenant(locals, request))) as Record<string, unknown> | null;
 
     if (isGone(record)) {
       return new Response(JSON.stringify({ error: 'Category not found' }), {
@@ -54,6 +54,8 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
     requireRole(locals, ['owner']);
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) {
@@ -87,7 +89,6 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
-    const instanceId = resolveTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('category', id, instanceId)) as Record<string, unknown> | null;
 
@@ -127,7 +128,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('category', id, instanceId)) as Record<string, unknown> | null;
 

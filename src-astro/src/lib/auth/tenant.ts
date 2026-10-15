@@ -40,6 +40,48 @@ export function resolveTenant(locals: LocalsLike, request: Request, bodyInstance
   return tenant;
 }
 
+/**
+ * `instance_id` que trae un cuerpo YA parseado, si es una cadena con valor.
+ *
+ * Zod descarta las claves que no declara, asi que despues de `schema.parse(body)` el `instance_id`
+ * del cliente desaparece. Por eso el tenant del cuerpo se lee del objeto crudo, antes de validar.
+ */
+export function bodyTenant(body: unknown): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const value = (body as { instance_id?: unknown }).instance_id;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * `instance_id` del cuerpo de una peticion que todavia no se ha consumido.
+ * Clona el request para no robarle el cuerpo al handler. Null si no hay cuerpo, no es JSON o no lo trae.
+ */
+export async function requestTenant(request: Request): Promise<string | null> {
+  if (request.method === 'GET' || request.method === 'HEAD') return null;
+  try {
+    return bodyTenant(await request.clone().json());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tenant de una ruta autenticada: el de la sesion, rechazando con 403 cualquier `instance_id`
+ * distinto que el cliente mande por query o por body (el del body se lee antes de que Zod lo quite).
+ * Debe llamarse ANTES de consumir el cuerpo de `request`.
+ */
+export async function resolveRequestTenant(locals: LocalsLike, request: Request): Promise<string> {
+  return resolveTenant(locals, request, await requestTenant(request));
+}
+
+/**
+ * Tenant de una ruta publica: la instancia del despliegue. El `instance_id` del cliente se IGNORA
+ * por completo (ni el query ni el body eligen datos); esta funcion nunca lanza por un valor ajeno.
+ */
+export function resolvePublicTenant(locals: LocalsLike): string {
+  return tenantOf(locals);
+}
+
 /** Respuesta JSON para un AuthError (401 o 403); null si el error es otra cosa. */
 export function authErrorResponse(err: unknown): Response | null {
   const status = err && typeof err === 'object' ? (err as { status?: number }).status : undefined;

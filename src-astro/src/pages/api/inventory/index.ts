@@ -4,7 +4,7 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
 import { appendTx } from '../../../lib/inventoryLedger';
 import { requireSession } from '../../../lib/auth/session';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createItemSchema = z.object({
   gosIngredientId: z.string().regex(/^gos:ingredient\/[^/]+$/).nullable().optional(),
@@ -30,7 +30,7 @@ function genId(): string {
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
     const url = new URL(request.url);
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const lowStockParam = url.searchParams.get('lowStock');
     const lowThreshold = lowStockParam !== null ? Number(lowStockParam) : null;
 
@@ -67,6 +67,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -93,7 +95,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const adapter = createStorageAdapter(locals);
     const now = new Date().toISOString();

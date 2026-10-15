@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
 import { requireSession } from '../../../../lib/auth/session';
-import { resolveTenant, tenantOf, authErrorResponse } from '../../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 import { isOrderStatus } from '../../../../lib/orderStateMachine';
 import {
   PAYMENT_METHODS,
@@ -39,6 +39,8 @@ const json = (body: unknown, status: number) =>
 export const POST: APIRoute = async ({ request, params, locals }) => {
   try {
     const user = requireSession(locals);
+    // El tenant sale de la sesion; un `instance_id` ajeno en query o body es 403 (antes de leer el cuerpo).
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) return json({ error: 'Order id is required' }, 400);
@@ -57,8 +59,6 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
         400,
       );
     }
-
-    const instanceId = resolveTenant(locals, request, validation.data.instance_id);
 
     const adapter = createStorageAdapter(locals);
     const order = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
@@ -133,14 +133,14 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
 };
 
 /** GET /api/orders/[id]/payment — pagos registrados del pedido. */
-export const GET: APIRoute = async ({ params, locals }) => {
+export const GET: APIRoute = async ({ params, request, locals }) => {
   try {
     requireSession(locals);
     const { id } = params;
     if (!id) return json({ error: 'Order id is required' }, 400);
 
     const adapter = createStorageAdapter(locals);
-    const all = await adapter.list('payment', tenantOf(locals));
+    const all = await adapter.list('payment', await resolveRequestTenant(locals, request));
     const payments = (all as Array<Record<string, unknown>>).filter((p) => p.orderId === id);
 
     return json({ payments }, 200);

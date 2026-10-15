@@ -1,16 +1,12 @@
 <script lang="ts">
   // StockVsMinCard.svelte — stock actual frente al minimo configurado (dato real, sin prediccion).
   import { Card, Badge } from '@swal/ui';
-  import type { InventoryItem } from '../../stores/inventory.svelte';
+  // Lee el store del navegador directamente: la pagina ya no le pasa una copia serializada (que en el
+  // prerender nace vacia y nunca observa los datos que carga refreshInventoryFromApi).
+  import { inventory } from '../../stores/inventory.svelte';
   import { stockVsMin, type StockLevel } from '../../lib/stockVsMin';
 
-  interface Props {
-    items?: InventoryItem[];
-  }
-
-  let { items = [] }: Props = $props();
-
-  const rows = $derived(stockVsMin(items, 5));
+  const rows = $derived(stockVsMin(inventory.items, 5));
 
   function levelColor(l: StockLevel): string {
     if (l === 'critical') return 'var(--swal-danger, #f87171)';

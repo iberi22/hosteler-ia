@@ -20,6 +20,12 @@ export interface ApiContextInput {
   tier?: string;
   /** Cookies visibles por `cookies.get`, como en un Request real. */
   cookies?: Record<string, string>;
+  /**
+   * Si es true, el contexto NO define `locals.instanceId`: simula un handler al que no le ha pasado el
+   * middleware por delante. El resolver debe caer a la instancia del despliegue y seguir ignorando el
+   * `instance_id` del cliente.
+   */
+  omitInstanceId?: boolean;
 }
 
 // `App.Locals` la extiende `@astrojs/cloudflare` con `cfContext`, el runtime del Worker. Los handlers
@@ -66,18 +72,21 @@ function cookieDouble(initial: Record<string, string>): APIContext['cookies'] {
 export function apiContext(input: ApiContextInput): APIContext {
   const request = input.request;
   const url = new URL(request.url);
+  const locals: Partial<App.Locals> = {
+    user: input.user ?? null,
+    tier: input.tier ?? 'free',
+    cfContext: cfContextDouble(),
+  };
+  if (!input.omitInstanceId) {
+    locals.instanceId = input.instanceId ?? domainConfig.instanceId ?? 'default';
+  }
   return {
     request,
     url,
     originPathname: url.pathname,
     params: input.params ?? {},
     props: {},
-    locals: {
-      user: input.user ?? null,
-      instanceId: input.instanceId ?? domainConfig.instanceId ?? 'default',
-      tier: input.tier ?? 'free',
-      cfContext: cfContextDouble(),
-    },
+    locals: locals as App.Locals,
     cookies: cookieDouble(input.cookies ?? {}),
     site: undefined,
     generator: 'Astro test context',

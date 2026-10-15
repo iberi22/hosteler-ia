@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { requireSession } from '../../../lib/auth/session';
 import { applyReadState, toNotificationOrNull, visibleToUser } from '../../../lib/notifications';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 // Contrato heredado (legacy/app/api/notifications/[id]/route.ts):
 //
@@ -65,7 +65,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     const { id } = params;
     if (!id) return json({ error: 'Notification ID required' }, 400);
 
-    const { notification } = await loadOwn(locals, id, resolveTenant(locals, request));
+    const { notification } = await loadOwn(locals, id, await resolveRequestTenant(locals, request));
     if (!notification) return notFound();
 
     return json({ notification }, 200);
@@ -80,7 +80,8 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
     const { id } = params;
     if (!id) return json({ error: 'Notification ID required' }, 400);
 
-    const instanceId = resolveTenant(locals, request);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
     const { adapter, notification } = await loadOwn(locals, id, instanceId);
     if (!notification) return notFound();
 
@@ -121,7 +122,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
     const { id } = params;
     if (!id) return json({ error: 'Notification ID required' }, 400);
 
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const { adapter, notification } = await loadOwn(locals, id, instanceId);
     if (!notification) return notFound();
 

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
 import { isOrderStatus } from '../../../lib/orderStateMachine';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolvePublicTenant, resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const orderItemSchema = z.object({
   menuItemId: z.string().min(1, { message: 'menuItemId is required' }),
@@ -26,7 +26,7 @@ function genId(): string {
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
     const url = new URL(request.url);
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const statusFilter = url.searchParams.get('status');
 
     if (statusFilter && !isOrderStatus(statusFilter)) {
@@ -86,7 +86,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    const instanceId = resolveTenant(locals, request, data.instance_id);
+    // Ruta de invitado (sin sesion): la instancia es la del despliegue. El `instance_id` del cliente
+    // (query o body) se IGNORA por completo; no elige datos ni provoca 403.
+    const instanceId = resolvePublicTenant(locals);
 
     const adapter = createStorageAdapter(locals);
 

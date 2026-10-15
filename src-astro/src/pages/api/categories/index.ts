@@ -4,7 +4,7 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
 import { requireSession } from '../../../lib/auth/session';
 import { requireRole } from '../../../lib/auth/requireRole';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createCategorySchema = z.object({
   name: z.string().min(1, { message: 'Name is required' }),
@@ -19,7 +19,7 @@ function genId(): string {
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
     const adapter = createStorageAdapter(locals);
-    const list = await adapter.list('category', resolveTenant(locals, request));
+    const list = await adapter.list('category', await resolveRequestTenant(locals, request));
     const active = list.filter((item) => !(item as Record<string, unknown>).deleted_at);
 
     return new Response(JSON.stringify(active), {
@@ -40,6 +40,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireRole(locals, ['owner']);
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -69,7 +71,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const now = new Date().toISOString();
     const newRecord: DomainRecord = {
       id: genId(),
-      instance_id: resolveTenant(locals, request, data.instance_id),
+      instance_id: instanceId,
       name: data.name,
       description: data.description ?? null,
       created_at: now,

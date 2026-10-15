@@ -9,7 +9,7 @@ import {
   executeReset,
   resolveRequestedEntities,
 } from '../../../lib/resetData';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 // Ver src/lib/resetData.ts para el por que de cada regla. Resumen:
 //
@@ -54,6 +54,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: resetDenial(user.role) }, 403);
     }
 
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
+
     let body: unknown = {};
     const raw = await request.text();
     if (raw.trim().length > 0) {
@@ -69,9 +72,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: 'Validation failed', details: z.treeifyError(validation.error) }, 400);
     }
 
-    // El instance sale de la sesion (locals). Un instance_id distinto en query o body es 403: pedir el
-    // reset del instance de otro restaurante no es una operacion que este endpoint pueda hacer.
-    const instanceId = resolveTenant(locals, request, validation.data.instance_id);
+    // El instance sale de la sesion (locals). Un instance_id distinto en query o body ya se rechazo con
+    // 403 al entrar (resolveRequestTenant): resetear el instance de otro restaurante no es posible.
 
     const { known, unknown } = resolveRequestedEntities(validation.data.entities);
     if (known.length === 0) {
@@ -124,7 +126,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
       return json({ error: resetDenial(user.role) }, 403);
     }
 
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { known, unknown } = resolveRequestedEntities(undefined);
     const adapter = createStorageAdapter(locals);

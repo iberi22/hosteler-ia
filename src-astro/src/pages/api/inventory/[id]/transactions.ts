@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
 import { isTxKind, appendTx, txHistory, type TxKind } from '../../../../lib/inventoryLedger';
 import { requireSession } from '../../../../lib/auth/session';
-import { resolveTenant, authErrorResponse } from '../../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 const txSchema = z.object({
   kind: z.string().min(1, { message: 'kind is required (purchase|use|waste|adjust)' }),
@@ -22,7 +22,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const item = (await adapter.get('inventoryItem', id, instanceId)) as Record<string, unknown> | null;
@@ -53,6 +53,8 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 export const POST: APIRoute = async ({ params, request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) {
@@ -92,8 +94,6 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    const instanceId = resolveTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const item = (await adapter.get('inventoryItem', id, instanceId)) as Record<string, unknown> | null;

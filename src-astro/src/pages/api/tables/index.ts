@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
 import { requireSession } from '../../../lib/auth/session';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createTableSchema = z.object({
   number: z.number().int().positive({ message: 'Number must be a positive integer' }),
@@ -23,7 +23,7 @@ async function qrExists(adapter: ReturnType<typeof createStorageAdapter>, qrCode
 
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const list = await adapter.list('table', instanceId);
@@ -47,6 +47,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -73,7 +75,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const adapter = createStorageAdapter(locals);
 

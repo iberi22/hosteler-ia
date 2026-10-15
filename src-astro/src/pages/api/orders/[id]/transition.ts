@@ -5,7 +5,7 @@ import { isOrderStatus, assertTransition, type OrderStatus } from '../../../../l
 import { deductRecipe } from '../../../../lib/recipes';
 import type { StorageAdapter } from '../../../../lib/domain';
 import { requireSession } from '../../../../lib/auth/session';
-import { resolveTenant, authErrorResponse } from '../../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 async function deductOrderStock(
   adapter: StorageAdapter,
@@ -36,6 +36,8 @@ const transitionSchema = z.object({
 export const POST: APIRoute = async ({ params, request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) {
@@ -68,8 +70,6 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
         },
       );
     }
-
-    const instanceId = resolveTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;

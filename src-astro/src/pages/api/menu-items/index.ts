@@ -5,7 +5,7 @@ import type { DomainRecord } from '../../../lib/domain';
 import { assertValidRecipe } from '../../../lib/recipes';
 import { requireSession } from '../../../lib/auth/session';
 import { requireRole } from '../../../lib/auth/requireRole';
-import { resolveTenant, authErrorResponse } from '../../../lib/auth/tenant';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const recipeLineSchema = z.object({
   inventoryId: z.string().min(1, { message: 'inventoryId is required' }),
@@ -28,7 +28,7 @@ function genId(): string {
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
     const url = new URL(request.url);
-    const instanceId = resolveTenant(locals, request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const categoryFilter = url.searchParams.get('categoryId');
 
     const adapter = createStorageAdapter(locals);
@@ -58,6 +58,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireRole(locals, ['owner']);
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -84,7 +86,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const adapter = createStorageAdapter(locals);
 

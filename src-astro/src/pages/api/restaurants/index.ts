@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { z } from "zod";
 import { requireSession } from "../../../lib/auth/session";
-import { resolveTenant, authErrorResponse } from "../../../lib/auth/tenant";
+import { resolvePublicTenant, resolveRequestTenant, authErrorResponse } from "../../../lib/auth/tenant";
 import type { DomainRecord } from "../../../lib/domain";
 import { createStorageAdapter } from "../../../lib/storageAdapter";
 import {
@@ -24,10 +24,11 @@ function genId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export const GET: APIRoute = async ({ request, locals }) => {
+export const GET: APIRoute = async ({ locals }) => {
   try {
-    // El tenant sale de la sesion (locals.instanceId), nunca de `?instance_id=`: pedir otra instancia es 403.
-    const instanceId = resolveTenant(locals, request);
+    // Ruta publica: la lista sale de la instancia del despliegue. El `?instance_id=` del cliente se IGNORA
+    // (no elige datos ni provoca 403): ver resolvePublicTenant en lib/auth/tenant.ts.
+    const instanceId = resolvePublicTenant(locals);
 
     const adapter = createStorageAdapter(locals);
     const list = await adapter.list("restaurant", instanceId);
@@ -53,6 +54,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireRole(locals, ['owner']);
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -88,8 +91,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-
-    const instanceId = resolveTenant(locals, request, data.instance_id);
 
     const slugError = validateSlug(data.slug);
     if (slugError) {

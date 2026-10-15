@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 import {
   costPerServing,
   recipeCostTotal,
@@ -44,12 +44,14 @@ const createSchema = z.object({
  * intelectual del restaurante. Lo que se expone al cliente final es el plato
  * (menuItem.isPublic) via /api/menu, que nunca incluye estos campos.
  */
-export const GET: APIRoute = async ({ locals }) => {
+export const GET: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // El tenant sale de la sesion; `?instance_id=` de otra instancia es 403 (ver lib/auth/tenant.ts).
+    const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
-    const recipes = await adapter.list('recipe', (locals.instanceId ?? domainConfig.instanceId ?? 'default'));
-    const items = await adapter.list('menuItem', (locals.instanceId ?? domainConfig.instanceId ?? 'default'));
+    const recipes = await adapter.list('recipe', instanceId);
+    const items = await adapter.list('menuItem', instanceId);
     const priceById = new Map(
       items.map((m) => [m.id, Number((m as Record<string, unknown>).price ?? 0)]),
     );
@@ -65,9 +67,8 @@ export const GET: APIRoute = async ({ locals }) => {
     });
     return json(rows, 200);
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return json({ error: 'Internal Server Error' }, 500);
   }
 };
@@ -82,6 +83,8 @@ export const GET: APIRoute = async ({ locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
     let body: unknown;
     try {
       body = await request.json();
@@ -93,7 +96,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: 'Validation failed', details: parsed.error.issues.map((i) => i.message) }, 422);
     }
 
-    const instanceId = (locals.instanceId ?? domainConfig.instanceId ?? 'default');
     const adapter = createStorageAdapter(locals);
     const menuItem = await adapter.get('menuItem', parsed.data.menuItemId, instanceId);
     if (!menuItem) return json({ error: 'El plato no existe' }, 404);
@@ -132,9 +134,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
     await adapter.create('recipe', record);
     return json(record, 201);
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return json({ error: 'Internal Server Error' }, 500);
   }
 };
