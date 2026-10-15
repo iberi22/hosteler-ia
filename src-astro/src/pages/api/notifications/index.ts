@@ -1,9 +1,8 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
 import type { DomainRecord } from '../../../lib/domain';
-import { requireSession, AuthError, type SessionUser } from '../../../lib/auth/session';
+import { requireSession, type SessionUser } from '../../../lib/auth/session';
 import {
   NOTIFICATION_TYPES,
   NOTIFICATION_PRIORITIES,
@@ -15,6 +14,7 @@ import {
   newNotificationDefaults,
   type Notification,
 } from '../../../lib/notifications';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 // Contrato heredado del legacy (legacy/app/api/notifications/route.ts):
 //
@@ -52,17 +52,9 @@ const json = (body: unknown, status: number) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-/** Un AuthError es 401; cualquier otra cosa, 500. Un solo lugar que lo decide. */
+/** Un AuthError es 401 o 403; cualquier otra cosa, 500. Un solo lugar que lo decide. */
 function handleError(err: unknown): Response {
-  if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-    return json({ error: (err as { message?: string }).message ?? 'Authentication required' }, 401);
-  }
-  return json({ error: 'Internal Server Error' }, 500);
-}
-
-function resolveInstance(request: Request): string {
-  const url = new URL(request.url);
-  return url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+  return authErrorResponse(err) ?? json({ error: 'Internal Server Error' }, 500);
 }
 
 function genId(): string {
@@ -125,7 +117,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
     if (!query.ok) return json({ error: query.error }, 400);
 
     const adapter = createStorageAdapter(locals);
-    const all = (await adapter.list('notification', resolveInstance(request))).map(toNotification);
+    const all = (await adapter.list('notification', await resolveRequestTenant(locals, request))).map(toNotification);
 
     // visibleToUser va ANTES del filtro y del contador: el usuario solo puede
     // ver lo suyo, y el badge no puede contar avisos de otra persona.
@@ -141,6 +133,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -155,14 +149,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    // El tenant se resuelve IGUAL que en el resto de endpoints (session/
-    // query/default) y no sale del body: un POST no puede escribir en el
-    // instance de otro restaurante.
-    const instanceId =
-      (typeof locals?.instanceId === 'string' ? locals.instanceId : undefined) ??
-      data.instance_id ??
-      domainConfig.instanceId ??
-      'default';
 
     const adapter = createStorageAdapter(locals);
     const now = new Date().toISOString();
@@ -192,6 +178,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 export const PATCH: APIRoute = async ({ request, locals }) => {
   try {
     const user: SessionUser = requireSession(locals);
+    const instanceId = await resolveRequestTenant(locals, request);
     const url = new URL(request.url);
     const all = url.searchParams.get('all') === 'true';
 
@@ -199,7 +186,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
 
     const adapter = createStorageAdapter(locals);
     const mine = visibleToUser(
-      (await adapter.list('notification', resolveInstance(request))).map(toNotification),
+      (await adapter.list('notification', instanceId)).map(toNotification),
       user.id,
     );
 
@@ -207,7 +194,7 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     let updated = 0;
     for (const n of mine) {
       if (n.isRead) continue;
-      await adapter.update('notification', n.id, { isRead: true, readAt: now }, resolveInstance(request));
+      await adapter.update('notification', n.id, { isRead: true, readAt: now }, instanceId);
       updated++;
     }
 

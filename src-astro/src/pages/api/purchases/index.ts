@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 import { purchaseTotals, roundCOP, type PurchaseLine } from '../../../lib/domain.extensions';
 import type { DomainRecord, StorageAdapter } from '../../../lib/domain';
 import { appendTx } from '../../../lib/inventoryLedger';
@@ -34,13 +34,15 @@ const createSchema = z.object({
  * Devuelve las compras con el detalle de proveedor resuelto, porque el panel
  * muestra "Carniceria del Sur" y no un id opaco.
  */
-export const GET: APIRoute = async ({ locals }) => {
+export const GET: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // El tenant sale de la sesion; `?instance_id=` de otra instancia es 403 (ver lib/auth/tenant.ts).
+    const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
     const [purchases, suppliers] = await Promise.all([
-      adapter.list('purchase', (locals.instanceId ?? domainConfig.instanceId ?? 'default')),
-      adapter.list('supplier', (locals.instanceId ?? domainConfig.instanceId ?? 'default')),
+      adapter.list('purchase', instanceId),
+      adapter.list('supplier', instanceId),
     ]);
     const byId = new Map(suppliers.map((s) => [s.id, s as Record<string, unknown>]));
     const rows = (purchases as Array<Record<string, unknown>>)
@@ -51,9 +53,8 @@ export const GET: APIRoute = async ({ locals }) => {
       .sort((a, b) => String(b.invoiceDate).localeCompare(String(a.invoiceDate)));
     return json(rows, 200);
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return json({ error: 'Internal Server Error' }, 500);
   }
 };
@@ -143,6 +144,8 @@ async function applyLines(
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
     let body: unknown;
     try {
       body = await request.json();
@@ -154,7 +157,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: 'Validation failed', details: parsed.error.issues.map((i) => i.message) }, 422);
     }
 
-    const instanceId = (locals.instanceId ?? domainConfig.instanceId ?? 'default');
     const adapter = createStorageAdapter(locals);
 
     const supplier = await adapter.get('supplier', parsed.data.supplierId, instanceId);
@@ -216,9 +218,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const stockApplied = await applyLines(adapter, instanceId, id, lines);
     return json({ purchase: record, stockApplied }, 201);
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return json({ error: 'Internal Server Error' }, 500);
   }
 };

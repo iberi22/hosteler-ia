@@ -1,9 +1,9 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
 import { applyReadState, toNotificationOrNull, visibleToUser } from '../../../lib/notifications';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 // Contrato heredado (legacy/app/api/notifications/[id]/route.ts):
 //
@@ -35,21 +35,13 @@ const json = (body: unknown, status: number) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-function resolveInstance(request: Request): string {
-  const url = new URL(request.url);
-  return url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
-}
-
 function notFound() {
   return json({ error: 'Notification not found' }, 404);
 }
 
-/** Un AuthError es 401; cualquier otra cosa, 500. Un solo lugar que lo decide. */
+/** Un AuthError es 401 o 403; cualquier otra cosa, 500. Un solo lugar que lo decide. */
 function handleError(err: unknown): Response {
-  if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-    return json({ error: (err as { message?: string }).message ?? 'Authentication required' }, 401);
-  }
-  return json({ error: 'Internal Server Error' }, 500);
+  return authErrorResponse(err) ?? json({ error: 'Internal Server Error' }, 500);
 }
 
 /**
@@ -73,7 +65,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     const { id } = params;
     if (!id) return json({ error: 'Notification ID required' }, 400);
 
-    const { notification } = await loadOwn(locals, id, resolveInstance(request));
+    const { notification } = await loadOwn(locals, id, await resolveRequestTenant(locals, request));
     if (!notification) return notFound();
 
     return json({ notification }, 200);
@@ -88,7 +80,8 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
     const { id } = params;
     if (!id) return json({ error: 'Notification ID required' }, 400);
 
-    const instanceId = resolveInstance(request);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
     const { adapter, notification } = await loadOwn(locals, id, instanceId);
     if (!notification) return notFound();
 
@@ -129,7 +122,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
     const { id } = params;
     if (!id) return json({ error: 'Notification ID required' }, 400);
 
-    const instanceId = resolveInstance(request);
+    const instanceId = await resolveRequestTenant(locals, request);
     const { adapter, notification } = await loadOwn(locals, id, instanceId);
     if (!notification) return notFound();
 

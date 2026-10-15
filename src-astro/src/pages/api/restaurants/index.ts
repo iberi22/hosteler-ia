@@ -1,8 +1,8 @@
 import type { APIRoute } from "astro";
 import { z } from "zod";
-import { AuthError, requireSession } from "../../../lib/auth/session";
+import { requireSession } from "../../../lib/auth/session";
+import { resolvePublicTenant, resolveRequestTenant, authErrorResponse } from "../../../lib/auth/tenant";
 import type { DomainRecord } from "../../../lib/domain";
-import { domainConfig } from "../../../lib/domain.config";
 import { createStorageAdapter } from "../../../lib/storageAdapter";
 import {
   isSlugTaken,
@@ -24,25 +24,25 @@ function genId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export const GET: APIRoute = async ({ request, locals }) => {
+export const GET: APIRoute = async ({ locals }) => {
   try {
-    const url = new URL(request.url);
-    const instanceId =
-      url.searchParams.get("instance_id") ??
-      domainConfig.instanceId ??
-      "default";
+    // Ruta publica: la lista sale de la instancia del despliegue. El `?instance_id=` del cliente se IGNORA
+    // (no elige datos ni provoca 403): ver resolvePublicTenant en lib/auth/tenant.ts.
+    const instanceId = resolvePublicTenant(locals);
 
     const adapter = createStorageAdapter(locals);
     const list = await adapter.list("restaurant", instanceId);
 
     // Filter out soft-deleted records
-    const active = list.filter((item: any) => !item.deleted_at);
+    const active = list.filter((item) => !(item as Record<string, unknown>).deleted_at);
 
     return new Response(JSON.stringify(active), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
@@ -54,6 +54,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireRole(locals, ['owner']);
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -90,13 +92,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
       });
     }
 
-    const url = new URL(request.url);
-    const instanceId =
-      data.instance_id ??
-      url.searchParams.get("instance_id") ??
-      domainConfig.instanceId ??
-      "default";
-
     const slugError = validateSlug(data.slug);
     if (slugError) {
       return new Response(JSON.stringify({ error: slugError }), {
@@ -132,24 +127,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    if (
-      error instanceof AuthError ||
-      (error &&
-        typeof error === "object" &&
-        (error as { status?: number }).status === 401)
-    ) {
-      return new Response(
-        JSON.stringify({
-          error:
-            (error as { message?: string }).message ??
-            "Authentication required",
-        }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: "Internal Server Error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

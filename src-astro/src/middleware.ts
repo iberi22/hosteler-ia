@@ -16,7 +16,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
 
   const token = context.cookies.get('fize_session')?.value;
-  const instanceId = context.url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+  // El tenant es la instancia del despliegue, NUNCA el `?instance_id=` del cliente: la sesion se busca y se
+  // ata a esta instancia, y las rutas toman el tenant de `locals.instanceId` (ver lib/auth/tenant.ts).
+  const instanceId = domainConfig.instanceId ?? 'default';
 
   let user: SessionUser | null = null;
   let tier = 'free';

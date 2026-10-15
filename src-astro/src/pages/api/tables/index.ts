@@ -1,9 +1,9 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
 import type { DomainRecord } from '../../../lib/domain';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createTableSchema = z.object({
   number: z.number().int().positive({ message: 'Number must be a positive integer' }),
@@ -23,8 +23,7 @@ async function qrExists(adapter: ReturnType<typeof createStorageAdapter>, qrCode
 
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const list = await adapter.list('table', instanceId);
@@ -35,6 +34,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     console.error('[api/tables:GET]', err);
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
@@ -46,6 +47,8 @@ export const GET: APIRoute = async ({ request, locals }) => {
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown;
     try {
@@ -72,8 +75,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
     }
 
     const data = validation.data;
-    const url = new URL(request.url);
-    const instanceId = data.instance_id ?? url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
 
     const adapter = createStorageAdapter(locals);
 
@@ -101,12 +102,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-      return new Response(JSON.stringify({ error: (err as { message?: string }).message ?? 'Authentication required' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

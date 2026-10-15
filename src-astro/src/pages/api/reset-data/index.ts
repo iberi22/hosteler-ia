@@ -1,8 +1,7 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
 import {
   canReset,
   resetDenial,
@@ -10,6 +9,7 @@ import {
   executeReset,
   resolveRequestedEntities,
 } from '../../../lib/resetData';
+import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 // Ver src/lib/resetData.ts para el por que de cada regla. Resumen:
 //
@@ -41,12 +41,9 @@ const json = (body: unknown, status: number) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-/** Un AuthError es 401; cualquier otra cosa, 500. Un solo lugar que lo decide. */
+/** Un AuthError es 401 o 403; cualquier otra cosa, 500. Un solo lugar que lo decide. */
 function handleError(err: unknown): Response {
-  if (err instanceof AuthError || (err && typeof err === 'object' && (err as { status?: number }).status === 401)) {
-    return json({ error: (err as { message?: string }).message ?? 'Authentication required' }, 401);
-  }
-  return json({ error: 'Internal Server Error' }, 500);
+  return authErrorResponse(err) ?? json({ error: 'Internal Server Error' }, 500);
 }
 
 export const POST: APIRoute = async ({ request, locals }) => {
@@ -56,6 +53,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (!canReset(user.role)) {
       return json({ error: resetDenial(user.role) }, 403);
     }
+
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     let body: unknown = {};
     const raw = await request.text();
@@ -72,13 +72,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
       return json({ error: 'Validation failed', details: z.treeifyError(validation.error) }, 400);
     }
 
-    // El instance sale de la sesion (locals), con query como red de seguridad.
-    // NUNCA del body: pedir el reset del instance de otro restaurante no es una
-    // operacion que este endpoint pueda hacer.
-    const localsInstance = typeof locals?.instanceId === 'string' ? locals.instanceId : undefined;
-    const url = new URL(request.url);
-    const instanceId =
-      localsInstance ?? validation.data.instance_id ?? url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    // El instance sale de la sesion (locals). Un instance_id distinto en query o body ya se rechazo con
+    // 403 al entrar (resolveRequestTenant): resetear el instance de otro restaurante no es posible.
 
     const { known, unknown } = resolveRequestedEntities(validation.data.entities);
     if (known.length === 0) {
@@ -131,10 +126,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
       return json({ error: resetDenial(user.role) }, 403);
     }
 
-    const localsInstance = typeof locals?.instanceId === 'string' ? locals.instanceId : undefined;
-    const url = new URL(request.url);
-    const instanceId =
-      localsInstance ?? url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { known, unknown } = resolveRequestedEntities(undefined);
     const adapter = createStorageAdapter(locals);

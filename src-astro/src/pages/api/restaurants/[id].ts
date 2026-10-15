@@ -1,10 +1,10 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { domainConfig } from '../../../lib/domain.config';
-import { requireSession, AuthError } from '../../../lib/auth/session';
+import { requireSession } from '../../../lib/auth/session';
 import { isSlugTaken, SLUG_TAKEN_MESSAGE, validateSlug, validateWhatsapp } from '../../../lib/restaurantRules';
 import { requireRole } from '../../../lib/auth/requireRole';
+import { resolvePublicTenant, resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const updateRestaurantSchema = z.object({
   name: z.string().min(1, { message: 'Name cannot be empty' }).optional(),
@@ -20,7 +20,7 @@ const updateRestaurantSchema = z.object({
   email: z.email({ message: 'Invalid email' }).optional(),
 });
 
-export const GET: APIRoute = async ({ params, request, locals }) => {
+export const GET: APIRoute = async ({ params, locals }) => {
   try {
     const { id } = params;
     if (!id) {
@@ -30,11 +30,11 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    // Ruta publica: sirve la instancia del despliegue e IGNORA el `?instance_id=` del cliente.
+    const instanceId = resolvePublicTenant(locals);
 
     const adapter = createStorageAdapter(locals);
-    const record: any = await adapter.get('restaurant', id, instanceId);
+    const record = (await adapter.get('restaurant', id, instanceId)) as Record<string, unknown> | null;
 
     if (!record || record.deleted_at) {
       return new Response(JSON.stringify({ error: 'Restaurant not found' }), {
@@ -48,6 +48,8 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -59,6 +61,8 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
     requireRole(locals, ['owner']);
     requireSession(locals);
+    // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const { id } = params;
     if (!id) {
@@ -104,9 +108,6 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       patch.phone = whatsapp.phone;
     }
 
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
-
     const adapter = createStorageAdapter(locals);
     const existing: any = await adapter.get('restaurant', id, instanceId);
 
@@ -143,12 +144,8 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    if (error instanceof AuthError || (error && typeof error === 'object' && (error as { status?: number }).status === 401)) {
-      return new Response(JSON.stringify({ error: (error as { message?: string }).message ?? 'Authentication required' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -169,8 +166,7 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       });
     }
 
-    const url = new URL(request.url);
-    const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+    const instanceId = await resolveRequestTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
     const existing: any = await adapter.get('restaurant', id, instanceId);
@@ -196,12 +192,8 @@ export const DELETE: APIRoute = async ({ params, request, locals }) => {
       },
     );
   } catch (error) {
-    if (error instanceof AuthError || (error && typeof error === 'object' && (error as { status?: number }).status === 401)) {
-      return new Response(JSON.stringify({ error: (error as { message?: string }).message ?? 'Authentication required' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    const authRes = authErrorResponse(error);
+    if (authRes) return authRes;
     return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

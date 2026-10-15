@@ -7,12 +7,13 @@ import { publicOrderStatus } from '../../../lib/orderPublicStatus';
 // the capability: new ids are random UUIDs (see api/orders genId), so they cannot be guessed.
 const NO_STORE = { 'cache-control': 'no-store', 'content-type': 'application/json' };
 
-export const GET: APIRoute = async ({ params, url, locals }) => {
+export const GET: APIRoute = async ({ params, locals }) => {
   const id = params.id ?? '';
   if (!/^[A-Za-z0-9-]{8,80}$/.test(id)) {
     return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: NO_STORE });
   }
-  const instanceId = url.searchParams.get('instance_id') ?? domainConfig.instanceId ?? 'default';
+  // Ruta publica (sin sesion): ignora el `?instance_id=` del cliente y sirve la instancia del despliegue.
+  const instanceId = locals.instanceId ?? domainConfig.instanceId ?? 'default';
   const adapter = createStorageAdapter(locals);
   const order = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
   const body = publicOrderStatus(order);
