@@ -63,6 +63,7 @@ export interface EncryptedInventorySnapshot {
   kdf: { name: 'PBKDF2'; hash: 'SHA-256'; iterations: number };
   salt: string;
   iv: string;
+  check?: string;
   ciphertext: string;
 }
 
@@ -74,7 +75,11 @@ export function inventoryExportFilename(_instanceId: string, now = new Date()): 
 }
 
 function toB64(bin: Uint8Array<ArrayBuffer>): string {
-  return btoa(String.fromCharCode(...bin));
+  let s = '';
+  for (let i = 0; i < bin.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, Array.from(new Uint8Array(bin.buffer, bin.byteOffset + i, Math.min(0x8000, bin.length - i))));
+  }
+  return btoa(s);
 }
 function fromB64(s: string): Uint8Array<ArrayBuffer> {
   const bin = atob(s);
@@ -89,14 +94,19 @@ async function deriveKeys(passphrase: string, salt: Uint8Array<ArrayBuffer>, ite
   baseBin.set(enc);
 
   const base = await crypto.subtle.importKey('raw', baseBin, 'PBKDF2', false, ['deriveBits']);
-  const bitsBuf = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, base, 256);
+  const bitsBuf = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, base, 512);
   const bits = new Uint8Array(bitsBuf);
 
   const keyBin = new Uint8Array(new ArrayBuffer(32));
-  keyBin.set(bits);
+  keyBin.set(bits.subarray(0, 32));
 
   const key = await crypto.subtle.importKey('raw', keyBin, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-  return key;
+
+  const hmacBin = new Uint8Array(new ArrayBuffer(32));
+  hmacBin.set(bits.subarray(32, 64));
+  const hmacKey = await crypto.subtle.importKey('raw', hmacBin, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+
+  return { key, hmacKey };
 }
 
 export async function buildInventorySnapshot(
@@ -178,13 +188,20 @@ export async function sealInventorySnapshot(
   const salt = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(16)));
   const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
 
+  const saltB64 = toB64(salt);
+  const ivB64 = toB64(iv);
+
   const header = {
     format: ENC_EXPORT_FORMAT,
     kdf: { name: 'PBKDF2' as const, hash: 'SHA-256' as const, iterations: KDF_ITERATIONS },
-    salt: toB64(salt)
+    salt: saltB64
   };
 
-  const key = await deriveKeys(passphrase, salt, KDF_ITERATIONS);
+  const { key, hmacKey } = await deriveKeys(passphrase, salt, KDF_ITERATIONS);
+
+  const checkPayload = new TextEncoder().encode(`${ENC_EXPORT_FORMAT}|${saltB64}|${ivB64}`);
+  const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
+  const check = toB64(new Uint8Array(checkSig));
 
   const enc = new TextEncoder().encode(JSON.stringify(snapshot));
   const plainBin = new Uint8Array(new ArrayBuffer(enc.length));
@@ -194,18 +211,97 @@ export async function sealInventorySnapshot(
   const ctBin = new Uint8Array(new ArrayBuffer(ctBuf.byteLength));
   ctBin.set(new Uint8Array(ctBuf));
 
-  return { ...header, iv: toB64(iv), ciphertext: toB64(ctBin) };
+  return { ...header, iv: ivB64, check, ciphertext: toB64(ctBin) };
 }
 
 function validatePlainSnapshot(data: unknown): PlainInventorySnapshot {
-  const b = data as Partial<PlainInventorySnapshot> | null;
-  if (!b || typeof b !== 'object' || b.format !== EXPORT_FORMAT || !b.source || typeof b.source.appId !== 'string') {
-    throw new InventoryExportError('formato');
-  }
-  if (!Array.isArray(b.locations) || !Array.isArray(b.items) || !Array.isArray(b.movements)) {
-    throw new InventoryExportError('formato');
-  }
-  return b as PlainInventorySnapshot;
+  const b = data as Record<string, unknown> | null;
+  if (!b || typeof b !== 'object') throw new InventoryExportError('formato');
+
+  if (b.format !== EXPORT_FORMAT) throw new InventoryExportError('formato');
+
+  const src = b.source as Record<string, unknown> | undefined;
+  if (!src || typeof src !== 'object' || typeof src.appId !== 'string') throw new InventoryExportError('formato');
+  if (typeof src.instanceId !== 'string' || typeof src.schemaVersion !== 'number' || !Number.isFinite(src.schemaVersion)) throw new InventoryExportError('formato');
+  if (typeof src.exportedAt !== 'string' || Number.isNaN(Date.parse(src.exportedAt))) throw new InventoryExportError('formato');
+
+  if (b.currency !== 'COP') throw new InventoryExportError('formato');
+
+  if (!Array.isArray(b.locations)) throw new InventoryExportError('formato');
+  const locations = b.locations.map((loc: unknown) => {
+    const l = loc as Record<string, unknown>;
+    if (!l || typeof l !== 'object' || typeof l.id !== 'string' || typeof l.name !== 'string') throw new InventoryExportError('formato');
+    if (l.type !== 'bodega' && l.type !== 'sucursal') throw new InventoryExportError('formato');
+    return { id: l.id, name: l.name, type: l.type as 'bodega' | 'sucursal' };
+  });
+
+  if (!Array.isArray(b.items)) throw new InventoryExportError('formato');
+  const items = b.items.map((it: unknown) => {
+    const i = it as Record<string, unknown>;
+    if (!i || typeof i !== 'object') throw new InventoryExportError('formato');
+    if (typeof i.id !== 'string' || typeof i.name !== 'string') throw new InventoryExportError('formato');
+    if (typeof i.quantity !== 'number' || !Number.isFinite(i.quantity)) throw new InventoryExportError('formato');
+    if (typeof i.minStock !== 'number' || !Number.isFinite(i.minStock)) throw new InventoryExportError('formato');
+    if (typeof i.cost !== 'number' || !Number.isFinite(i.cost)) throw new InventoryExportError('formato');
+    if (typeof i.price !== 'number' || !Number.isFinite(i.price)) throw new InventoryExportError('formato');
+
+    let customFields = i.customFields as Record<string, string> | undefined;
+    if (customFields) {
+      if (typeof customFields !== 'object' || Array.isArray(customFields)) throw new InventoryExportError('formato');
+      for (const val of Object.values(customFields)) {
+        if (typeof val !== 'string') throw new InventoryExportError('formato');
+      }
+    } else {
+      customFields = {};
+    }
+
+    return {
+      id: i.id,
+      sku: typeof i.sku === 'string' ? i.sku : (i.sku === null ? null : undefined),
+      name: i.name,
+      quantity: i.quantity,
+      unit: typeof i.unit === 'string' ? i.unit : (i.unit === null ? null : undefined),
+      minStock: i.minStock,
+      cost: i.cost,
+      price: i.price,
+      locationId: typeof i.locationId === 'string' ? i.locationId : (i.locationId === null ? null : undefined),
+      customFields
+    };
+  });
+
+  if (!Array.isArray(b.movements)) throw new InventoryExportError('formato');
+  const movements = b.movements.map((mov: unknown) => {
+    const m = mov as Record<string, unknown>;
+    if (!m || typeof m !== 'object') throw new InventoryExportError('formato');
+    if (typeof m.id !== 'string' || typeof m.itemId !== 'string') throw new InventoryExportError('formato');
+    if (typeof m.qty !== 'number' || !Number.isFinite(m.qty)) throw new InventoryExportError('formato');
+    if (typeof m.at !== 'string' || Number.isNaN(Date.parse(m.at))) throw new InventoryExportError('formato');
+
+    const validKinds = ['purchase', 'use', 'waste', 'adjust'] as const;
+    const kind = typeof m.kind === 'string' && (validKinds as readonly string[]).includes(m.kind) ? m.kind as typeof validKinds[number] : 'adjust';
+
+    return {
+      id: m.id,
+      itemId: m.itemId,
+      kind,
+      qty: m.qty,
+      at: m.at
+    };
+  });
+
+  return {
+    format: EXPORT_FORMAT,
+    source: {
+      appId: src.appId,
+      instanceId: src.instanceId,
+      schemaVersion: src.schemaVersion,
+      exportedAt: src.exportedAt
+    },
+    currency: 'COP',
+    locations,
+    items,
+    movements
+  };
 }
 
 export async function openInventorySnapshot(
@@ -256,14 +352,26 @@ export async function openInventorySnapshot(
     throw new InventoryExportError('alterado');
   }
 
-  const key = await deriveKeys(passphrase, salt, e.kdf.iterations);
+  const { key, hmacKey } = await deriveKeys(passphrase, salt, e.kdf.iterations);
+
+  if (typeof e.check === 'string' && e.check) {
+    const checkPayload = new TextEncoder().encode(`${ENC_EXPORT_FORMAT}|${e.salt}|${e.iv}`);
+    const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
+    const expectedCheck = toB64(new Uint8Array(checkSig));
+
+    // Constant-time comparison is ideal, but strict equality of base64 works for our domain
+    if (e.check !== expectedCheck) {
+      throw new InventoryExportError('clave');
+    }
+  }
 
   let plain: ArrayBuffer;
   try {
     plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
   } catch {
-    // Failing crypto.subtle.decrypt is assumed to be wrong key ('clave') since WebCrypto doesn't distinguish MAC failure from wrong key
-    throw new InventoryExportError('clave');
+    // If check was present and matched, decryption failure means the file was tampered with
+    // If check was absent (older envelopes), we can't tell, so we fall back to 'clave' (legacy behavior)
+    throw new InventoryExportError(e.check ? 'alterado' : 'clave');
   }
 
   let decryptedData: unknown;
