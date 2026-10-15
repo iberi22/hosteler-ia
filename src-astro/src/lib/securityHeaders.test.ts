@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// Mismo parser que usa el build (scripts/securityHeadersCheck.mjs): lo que valida el generador es lo que
+// comprueba este test, sin una segunda implementacion que se pueda desviar.
+import { parsearHeaders } from '../../scripts/securityHeadersCheck.mjs';
 import {
   HSTS_VALUE,
   X_CONTENT_TYPE_OPTIONS_VALUE,
@@ -18,19 +21,13 @@ import {
 // si alguien cambia uno y no el otro, esto falla. `_headers` es texto plano y no puede importar nada.
 
 const headers = readFileSync(resolve(process.cwd(), 'public', '_headers'), 'utf8');
+const bloques = parsearHeaders(headers);
 
-/** Cabeceras del bloque global `/*` (el que cubre estaticos y prerenderizadas). */
+/** Cabeceras del bloque global `/*` (el que cubre estaticos y prerenderizadas), nombres en minusculas. */
 function bloqueGlobal(archivo: string): Map<string, string> {
-  const lineas = archivo.split('\n');
-  const inicio = lineas.findIndex((l) => l.trim() === '/*');
-  expect(inicio, 'no hay regla global `/*` en public/_headers').toBeGreaterThanOrEqual(0);
-  const cabeceras = new Map<string, string>();
-  for (const linea of lineas.slice(inicio + 1)) {
-    if (linea.trim() === '' || !/^\s/.test(linea)) break; // fin del bloque
-    const [nombre, ...resto] = linea.trim().split(':');
-    cabeceras.set(nombre.toLowerCase(), resto.join(':').trim());
-  }
-  return cabeceras;
+  const global = parsearHeaders(archivo).find((b) => b.ruta === '/*');
+  expect(global, 'no hay regla global `/*` en public/_headers').toBeDefined();
+  return new Map((global?.cabeceras ?? []).map(([nombre, valor]) => [nombre.toLowerCase(), valor]));
 }
 
 describe('public/_headers: cabeceras de seguridad de estaticos y prerenderizadas', () => {
@@ -55,5 +52,23 @@ describe('public/_headers: cabeceras de seguridad de estaticos y prerenderizadas
   it('no declara un CSP propio: el del build lo pone gen-csp-headers.mjs por ruta (con sus hashes)', () => {
     expect(headers).not.toContain('Content-Security-Policy');
     expect(headers).not.toContain('unsafe-inline');
+  });
+
+  // Un bloque que repite una cabecera que ya pone `/*` no la sustituye: Cloudflare CONCATENA los valores
+  // (`X-Content-Type-Options: nosniff, nosniff`). Es lo que traia `/local` y `/local/*` antes de la ronda 2;
+  // aqui se recorren TODOS los bloques del archivo para que no vuelva a colarse en ninguno.
+  it('ningun otro bloque repite una cabecera que ya pone `/*` (Cloudflare concatenaria los valores)', () => {
+    const global = new Set(
+      bloques
+        .filter((b) => b.ruta === '/*')
+        .flatMap((b) => b.cabeceras.map(([nombre]) => nombre.toLowerCase())),
+    );
+    expect(global.size).toBeGreaterThan(0);
+    const repetidas = bloques
+      .filter((b) => b.ruta !== '/*')
+      .flatMap((b) => b.cabeceras.map(([nombre]) => [b.ruta, nombre] as const))
+      .filter(([, nombre]) => global.has(nombre.toLowerCase()))
+      .map(([ruta, nombre]) => `${ruta} -> ${nombre}`);
+    expect(repetidas).toEqual([]);
   });
 });

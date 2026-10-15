@@ -2,6 +2,8 @@
 # El middleware (src/middleware.ts) pone las mismas en las respuestas SSR: `_headers` NO se aplica a las
 # respuestas del Worker. Valores en src/lib/securityHeaders.ts; scripts/gen-csp-headers.mjs aborta el build
 # si este bloque desaparece. HSTS solo lo aplica el navegador sobre HTTPS (en el nodo local por HTTP se ignora).
+# Estas tres van SOLO aqui: repetirlas en otro bloque que tambien aplique a la ruta no sustituye el valor,
+# lo CONCATENA (`X-Content-Type-Options: nosniff, nosniff`), y el generador aborta el build si las repite.
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
@@ -15,16 +17,14 @@
 /offline/*
   Cache-Control: public, max-age=0, must-revalidate, no-transform
 # Modo local (docs/producto/NODO-LOCAL.md §2.1): estaticas sin middleware, asi que las cabeceras de seguridad
-# que pone src/middleware.ts no llegan; se fijan aqui. `/local` sin barra redirige a `/local/`.
+# que pone src/middleware.ts no llegan; las aplica el bloque global `/*` de arriba (HSTS incluido, aunque en
+# el nodo local por HTTP el navegador lo ignore). Aqui solo van las propias del modo local: repetir nosniff
+# o Referrer-Policy las concatenaria con las de `/*`. `/local` sin barra redirige a `/local/`.
 /local
   Cache-Control: public, max-age=0, must-revalidate, no-transform
   X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
 /local/*
   Cache-Control: public, max-age=0, must-revalidate, no-transform
   X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
