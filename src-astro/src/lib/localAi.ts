@@ -10,7 +10,7 @@ export interface LocalAiEnvironment {
 }
 
 export function localAiEnvironment(): LocalAiEnvironment {
-  return { languageModel: (globalThis as any).ai?.languageModel ?? (globalThis as any).LanguageModel };
+  return { languageModel: (globalThis as any).LanguageModel };
 }
 
 export async function promptApiState(env: LocalAiEnvironment = localAiEnvironment()): Promise<string | undefined> {
@@ -39,22 +39,20 @@ export function rulesRecommendations(prompt: string): string {
     if (line.startsWith('Stock bajo:')) {
       const parts = line.replace('Stock bajo:', '').trim();
       if (parts !== 'ninguno') {
-        for (const part of parts.split(',')) {
-          const match = part.trim().match(/^(.*?)\s*\((\d+)\)$/);
-          if (match) {
-            restockItems.push({ name: match[1], stock: match[2] });
-          }
+        const regex = /(.*?)\s*\(([-+]?\d+(?:[.,]\d+)?)\)(?:,\s*|$)/g;
+        let match;
+        while ((match = regex.exec(parts)) !== null) {
+          restockItems.push({ name: match[1].trim(), stock: match[2] });
         }
       }
     }
     if (line.startsWith('Top ventas:')) {
       const parts = line.replace('Top ventas:', '').trim();
       if (parts !== 'sin datos') {
-        for (const part of parts.split(',')) {
-          const match = part.trim().match(/^(.*?)\s*x(\d+)$/);
-          if (match) {
-            topItems.push({ name: match[1], qty: match[2] });
-          }
+        const regex = /(.*?)\s*x([-+]?\d+(?:[.,]\d+)?)(?:,\s*|$)/g;
+        let match;
+        while ((match = regex.exec(parts)) !== null) {
+          topItems.push({ name: match[1].trim(), qty: match[2] });
         }
       }
     }
@@ -97,7 +95,9 @@ export async function localInfer(prompt: string, env: LocalAiEnvironment = local
   if (tier === 'prompt-api' && env.languageModel) {
     let session;
     try {
-      session = await env.languageModel.create();
+      const lines = prompt.split('\n');
+      const systemPrompt = lines.find((l) => l.startsWith('Devuelve JSON:')) || 'Devuelve JSON: array de {type: restock|promo|menu|ops, title, detail} (máx 5, español).';
+      session = await env.languageModel.create({ systemPrompt });
       const response = await session.prompt(prompt);
       if (response) {
         return response;

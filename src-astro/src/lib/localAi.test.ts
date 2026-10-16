@@ -78,6 +78,38 @@ Top ventas: Tortilla x3`;
       expect(parsed[2].title).toBe('Promocionar Tortilla');
     });
 
+    it('handles decimal and negative numbers in stock and sales', () => {
+      const prompt = `Restaurante: Test
+Pedidos pendientes: 0
+Stock bajo: Harina (2.5), Leche (0,5), Queso (-1)
+Top ventas: Tortilla x3.14`;
+      const json = rulesRecommendations(prompt);
+      const parsed = parseRecommendations(json);
+      expect(parsed).toHaveLength(4);
+      expect(parsed[0].type).toBe('restock');
+      expect(parsed[0].title).toBe('Reponer Harina');
+      expect(parsed[1].type).toBe('restock');
+      expect(parsed[1].title).toBe('Reponer Leche');
+      expect(parsed[2].type).toBe('restock');
+      expect(parsed[2].title).toBe('Reponer Queso');
+      expect(parsed[3].type).toBe('promo');
+      expect(parsed[3].title).toBe('Promocionar Tortilla');
+    });
+
+    it('does not split items incorrectly on commas in names', () => {
+      const prompt = `Restaurante: Test
+Pedidos pendientes: 0
+Stock bajo: Tarta, grande (2)
+Top ventas: Pastel, pequeño x3`;
+      const json = rulesRecommendations(prompt);
+      const parsed = parseRecommendations(json);
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0].type).toBe('restock');
+      expect(parsed[0].title).toBe('Reponer Tarta, grande');
+      expect(parsed[1].type).toBe('promo');
+      expect(parsed[1].title).toBe('Promocionar Pastel, pequeño');
+    });
+
     it('provides ops when nothing else', () => {
       const prompt = `Restaurante: Test
 Pedidos pendientes: 0
@@ -111,9 +143,11 @@ Top ventas: F x3`;
         create: vi.fn().mockResolvedValue(session),
       } as unknown as PromptApiLike;
 
-      const response = await localInfer('test prompt', { languageModel });
+      const prompt = 'test prompt\nDevuelve JSON: array de {type: restock|promo|menu|ops, title, detail} (máx 5, español).';
+      const response = await localInfer(prompt, { languageModel });
       expect(languageModel.create).toHaveBeenCalledOnce();
-      expect(session.prompt).toHaveBeenCalledWith('test prompt');
+      expect(languageModel.create).toHaveBeenCalledWith({ systemPrompt: 'Devuelve JSON: array de {type: restock|promo|menu|ops, title, detail} (máx 5, español).' });
+      expect(session.prompt).toHaveBeenCalledWith(prompt);
       expect(session.destroy).toHaveBeenCalledOnce();
       const parsed = parseRecommendations(response);
       expect(parsed[0].title).toBe('Test');
