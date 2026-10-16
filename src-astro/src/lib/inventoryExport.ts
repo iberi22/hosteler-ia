@@ -11,6 +11,18 @@ const MESSAGES: Record<InventoryExportErrorKind, string> = {
   alterado: 'El archivo está dañado o fue alterado.',
 };
 
+function isStrictBase64(str: string, expectedDecodedLen?: number): boolean {
+  if (typeof str !== 'string') return false;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(str)) return false;
+  if (str.length % 4 !== 0) return false;
+  if (expectedDecodedLen !== undefined) {
+    const padCount = str.endsWith('==') ? 2 : (str.endsWith('=') ? 1 : 0);
+    const decodedLen = (str.length / 4) * 3 - padCount;
+    if (decodedLen !== expectedDecodedLen) return false;
+  }
+  return true;
+}
+
 export class InventoryExportError extends Error {
   readonly kind: InventoryExportErrorKind;
   constructor(kind: InventoryExportErrorKind, message = MESSAGES[kind]) {
@@ -185,6 +197,7 @@ export async function sealInventorySnapshot(
   snapshot: PlainInventorySnapshot,
   passphrase: string
 ): Promise<EncryptedInventorySnapshot> {
+  snapshot = validatePlainSnapshot(snapshot);
   const salt = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(16)));
   const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
 
@@ -199,7 +212,7 @@ export async function sealInventorySnapshot(
 
   const { key, hmacKey } = await deriveKeys(passphrase, salt, KDF_ITERATIONS);
 
-  const checkPayload = new TextEncoder().encode(`${ENC_EXPORT_FORMAT}|${saltB64}|${ivB64}`);
+  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${saltB64}`);
   const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
   const check = toB64(new Uint8Array(checkSig));
 
@@ -246,13 +259,17 @@ function validatePlainSnapshot(data: unknown): PlainInventorySnapshot {
     if (typeof i.price !== 'number' || !Number.isFinite(i.price)) throw new InventoryExportError('formato');
 
     let customFields = i.customFields as Record<string, string> | undefined;
-    if (customFields) {
-      if (typeof customFields !== 'object' || Array.isArray(customFields)) throw new InventoryExportError('formato');
+    if (customFields !== undefined) {
+      if (!customFields || typeof customFields !== 'object' || Array.isArray(customFields)) throw new InventoryExportError('formato');
       for (const val of Object.values(customFields)) {
         if (typeof val !== 'string') throw new InventoryExportError('formato');
       }
     } else {
       customFields = {};
+    }
+
+    if (i.sku !== undefined && i.sku !== null && typeof i.sku !== 'string') {
+      throw new InventoryExportError('formato');
     }
 
     return {
@@ -277,8 +294,9 @@ function validatePlainSnapshot(data: unknown): PlainInventorySnapshot {
     if (typeof m.qty !== 'number' || !Number.isFinite(m.qty)) throw new InventoryExportError('formato');
     if (typeof m.at !== 'string' || Number.isNaN(Date.parse(m.at))) throw new InventoryExportError('formato');
 
+    if (typeof m.kind !== 'string') throw new InventoryExportError('formato');
     const validKinds = ['purchase', 'use', 'waste', 'adjust'] as const;
-    const kind = typeof m.kind === 'string' && (validKinds as readonly string[]).includes(m.kind) ? m.kind as typeof validKinds[number] : 'adjust';
+    const kind = (validKinds as readonly string[]).includes(m.kind) ? m.kind as typeof validKinds[number] : 'adjust';
 
     return {
       id: m.id,
@@ -333,9 +351,13 @@ export async function openInventorySnapshot(
   }
 
   const e = base as Partial<EncryptedInventorySnapshot>;
-  for (const field of ['salt', 'iv', 'ciphertext'] as const) {
-    if (typeof e[field] !== 'string' || !e[field]) throw new InventoryExportError('formato');
-  }
+  if (!isStrictBase64(e.salt as string, 16)) throw new InventoryExportError('formato');
+  if (!isStrictBase64(e.iv as string, 12)) throw new InventoryExportError('formato');
+  if (typeof e.ciphertext !== 'string' || !isStrictBase64(e.ciphertext)) throw new InventoryExportError('formato');
+  const ctPadCount = e.ciphertext.endsWith('==') ? 2 : (e.ciphertext.endsWith('=') ? 1 : 0);
+  const ctLen = (e.ciphertext.length / 4) * 3 - ctPadCount;
+  if (ctLen < 16) throw new InventoryExportError('formato');
+  if (e.check === undefined || !isStrictBase64(e.check as string, 32)) throw new InventoryExportError('formato');
 
   if (!e.kdf || e.kdf.name !== 'PBKDF2' || e.kdf.hash !== 'SHA-256' || e.kdf.iterations !== KDF_ITERATIONS) {
     throw new InventoryExportError('alterado');
@@ -354,31 +376,41 @@ export async function openInventorySnapshot(
 
   const { key, hmacKey } = await deriveKeys(passphrase, salt, e.kdf.iterations);
 
-  if (typeof e.check === 'string' && e.check) {
-    const checkPayload = new TextEncoder().encode(`${ENC_EXPORT_FORMAT}|${e.salt}|${e.iv}`);
-    const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
-    const expectedCheck = toB64(new Uint8Array(checkSig));
+  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${e.salt}`);
+  const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
+  const expectedCheckBin = new Uint8Array(checkSig);
 
-    // Constant-time comparison is ideal, but strict equality of base64 works for our domain
-    if (e.check !== expectedCheck) {
-      throw new InventoryExportError('clave');
+  let checkMatch = false;
+  try {
+    const actualCheckBin = fromB64(e.check as string);
+    if (actualCheckBin.length === expectedCheckBin.length) {
+      let mismatch = 0;
+      for (let i = 0; i < actualCheckBin.length; i++) {
+        mismatch |= actualCheckBin[i] ^ expectedCheckBin[i];
+      }
+      checkMatch = mismatch === 0;
     }
+  } catch {
+    throw new InventoryExportError('formato');
+  }
+
+  if (!checkMatch) {
+    throw new InventoryExportError('clave');
   }
 
   let plain: ArrayBuffer;
   try {
     plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
   } catch {
-    // If check was present and matched, decryption failure means the file was tampered with
-    // If check was absent (older envelopes), we can't tell, so we fall back to 'clave' (legacy behavior)
-    throw new InventoryExportError(e.check ? 'alterado' : 'clave');
+    throw new InventoryExportError('alterado');
   }
 
+  // A tampered salt is indistinguishable from a wrong passphrase: it returns clave
   let decryptedData: unknown;
   try {
     decryptedData = JSON.parse(new TextDecoder().decode(plain));
   } catch {
-    throw new InventoryExportError('alterado');
+    throw new InventoryExportError('formato');
   }
 
   return validatePlainSnapshot(decryptedData);
