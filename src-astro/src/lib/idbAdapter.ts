@@ -8,6 +8,10 @@ import { domainConfig } from './domain.config';
 import type { StorageAdapter, DomainRecord } from './domain';
 import { ensurePersistentStorage, reportIfQuotaExceeded } from './storageDurability';
 
+import { getLockState, getActiveDek, LockedError } from './local/deviceLock';
+import { encryptRow, decryptRow } from './local/rowCrypto';
+
+
 const DB_NAME = 'fize-db';
 const DB_VERSION = 1;
 const INSTANCE_INDEX = 'by-instance';
@@ -45,8 +49,14 @@ async function db(): Promise<IDBPDatabase> {
 async function write(entity: string, record: DomainRecord): Promise<void> {
   const database = await db();
   void ensurePersistentStorage();
+
+  const dek = getActiveDek();
+  const state = await getLockState();
+  if (state === 'locked') throw new LockedError();
+  const finalRecord = state === 'unlocked' && dek ? await encryptRow(entity, record, dek) : record;
+
   try {
-    await database.put(entity, record);
+    await database.put(entity, finalRecord);
   } catch (e) {
     // No se traga: se avisa al usuario y se relanza (el cambio no quedó guardado).
     await reportIfQuotaExceeded(e);
@@ -115,16 +125,37 @@ export class IndexedDBAdapter implements StorageAdapter {
   }
 
   async list(entity: string, instanceId: string): Promise<DomainRecord[]> {
+
+    const state = await getLockState();
+    if (state === 'locked') throw new LockedError();
     const database = await db();
     const index = database.transaction(entity).store.index(INSTANCE_INDEX);
-    return (await index.getAll(instanceId)) as DomainRecord[];
+    const records = (await index.getAll(instanceId)) as DomainRecord[];
+
+    if (state === 'unlocked') {
+       const dek = getActiveDek();
+       if (!dek) throw new LockedError();
+       return Promise.all(records.map(r => decryptRow(entity, r, dek)));
+    }
+    return records;
+
   }
 
   async get(entity: string, id: string, instanceId: string): Promise<DomainRecord | null> {
+
+    const state = await getLockState();
+    if (state === 'locked') throw new LockedError();
     const database = await db();
     const record = (await database.get(entity, id)) as DomainRecord | undefined;
     if (!record || record.instance_id !== instanceId) return null;
+
+    if (state === 'unlocked') {
+       const dek = getActiveDek();
+       if (!dek) throw new LockedError();
+       return await decryptRow(entity, record, dek);
+    }
     return record;
+
   }
 
   async update(

@@ -8,6 +8,8 @@ import { Toaster } from "@swal/ui";
 import { AppShell } from "@swal/ui";
 import { themeBootScript } from "@swal/ui/theme-boot";
 import { NET_BANNER_SCRIPT } from "../lib/inlineScripts";
+import LockGate from "../components/local/LockGate.svelte";
+
 
 interface Props {
   title: string;
@@ -63,7 +65,9 @@ const NAV = [
     </p>
     <script is:inline set:html={NET_BANNER_SCRIPT}></script>
     <AppShell items={NAV} {currentPath} menuLabel="Menú" navLabel="Fize en este equipo" style="background: transparent" client:load>
+      <LockGate client:load>
       <slot />
+    </LockGate>
     </AppShell>
     <Toaster client:load position="bottom-right" />
   </body>
