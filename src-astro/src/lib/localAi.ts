@@ -1,0 +1,114 @@
+export type LocalAiTier = 'prompt-api' | 'rules';
+
+export interface PromptApiLike {
+  availability(): Promise<string>;
+  create(options?: { systemPrompt?: string }): Promise<{ prompt(text: string): Promise<string>; destroy?(): void }>;
+}
+
+export interface LocalAiEnvironment {
+  languageModel?: PromptApiLike;
+}
+
+export function localAiEnvironment(): LocalAiEnvironment {
+  return { languageModel: (globalThis as any).ai?.languageModel ?? (globalThis as any).LanguageModel };
+}
+
+export async function promptApiState(env: LocalAiEnvironment = localAiEnvironment()): Promise<string | undefined> {
+  if (!env.languageModel) return undefined;
+  try {
+    return await env.languageModel.availability();
+  } catch {
+    return undefined;
+  }
+}
+
+export async function detectLocalAiTier(env: LocalAiEnvironment = localAiEnvironment()): Promise<LocalAiTier> {
+  const state = await promptApiState(env);
+  if (state === 'available' || state === 'readily') {
+    return 'prompt-api';
+  }
+  return 'rules';
+}
+
+export function rulesRecommendations(prompt: string): string {
+  const lines = prompt.split('\n');
+  const restockItems: { name: string; stock: string }[] = [];
+  const topItems: { name: string; qty: string }[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('Stock bajo:')) {
+      const parts = line.replace('Stock bajo:', '').trim();
+      if (parts !== 'ninguno') {
+        for (const part of parts.split(',')) {
+          const match = part.trim().match(/^(.*?)\s*\((\d+)\)$/);
+          if (match) {
+            restockItems.push({ name: match[1], stock: match[2] });
+          }
+        }
+      }
+    }
+    if (line.startsWith('Top ventas:')) {
+      const parts = line.replace('Top ventas:', '').trim();
+      if (parts !== 'sin datos') {
+        for (const part of parts.split(',')) {
+          const match = part.trim().match(/^(.*?)\s*x(\d+)$/);
+          if (match) {
+            topItems.push({ name: match[1], qty: match[2] });
+          }
+        }
+      }
+    }
+  }
+
+  const recommendations: { type: string; title: string; detail: string }[] = [];
+
+  // Up to 3 restock items
+  for (const item of restockItems.slice(0, 3)) {
+    recommendations.push({
+      type: 'restock',
+      title: `Reponer ${item.name}`,
+      detail: `El stock actual es de ${item.stock}.`,
+    });
+  }
+
+  // 1 promo for top item
+  if (topItems.length > 0) {
+    const top = topItems[0];
+    recommendations.push({
+      type: 'promo',
+      title: `Promocionar ${top.name}`,
+      detail: `Es un producto estrella con ${top.qty} ventas recientes.`,
+    });
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push({
+      type: 'ops',
+      title: 'Todo en orden',
+      detail: 'El restaurante funciona correctamente.',
+    });
+  }
+
+  return JSON.stringify(recommendations.slice(0, 5));
+}
+
+export async function localInfer(prompt: string, env: LocalAiEnvironment = localAiEnvironment()): Promise<string> {
+  const tier = await detectLocalAiTier(env);
+  if (tier === 'prompt-api' && env.languageModel) {
+    let session;
+    try {
+      session = await env.languageModel.create();
+      const response = await session.prompt(prompt);
+      if (response) {
+        return response;
+      }
+    } catch {
+      // fallback to rules on rejection
+    } finally {
+      if (session && session.destroy) {
+        session.destroy();
+      }
+    }
+  }
+  return rulesRecommendations(prompt);
+}
