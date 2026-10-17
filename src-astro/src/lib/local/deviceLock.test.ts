@@ -288,6 +288,46 @@ async function captureMarkerDuring(transition: () => Promise<unknown>): Promise<
   }
 }
 
+/**
+ * Corre `activate` y copia el marcador `lockTransition` que queda escrito en `fize-local` a mitad de la
+ * migracion (lo que haria un atacante espiando el equipo durante una activacion que acaba bien). La copia se
+ * toma en el primer cifrado posterior a la escritura del marcador, que es cuando el marcador ya esta en
+ * disco. Espera a que la activacion termine (bien o mal) y devuelve la copia.
+ */
+async function captureLockingMarkerDuring(activate: () => Promise<unknown>): Promise<Record<string, unknown>> {
+  const realEncrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+  let reached!: () => void;
+  const atMarker = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let open!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  let holding = false;
+  const spy = vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(
+    async (algorithm: AlgorithmIdentifier, key: CryptoKey, data: BufferSource) => {
+      if (!holding && (await rawTransition()) !== undefined) {
+        holding = true;
+        reached();
+        await hold;
+      }
+      return realEncrypt(algorithm, key, data);
+    },
+  );
+  try {
+    const pending = activate();
+    pending.catch(() => undefined);
+    await atMarker;
+    const captured = (await rawTransition()) as Record<string, unknown>;
+    open();
+    await pending.catch(() => undefined);
+    return captured;
+  } finally {
+    spy.mockRestore();
+  }
+}
+
 beforeEach(async () => {
   await wipeStores();
   resetLocalStoresForTests();
@@ -389,6 +429,116 @@ describe('deviceLock: transicion de cifrado', () => {
     expect(isEncryptedBlob(await (await entityDb()).get('restaurant', 'r1'))).toBe(true);
     expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
     await disableProtection();
+  });
+
+  it('un corte REAL a mitad de la activacion se reanuda al desbloquear y termina todo cifrado', async () => {
+    await seedPlaintext();
+
+    // El fallo se inyecta DENTRO de la migracion (un cifrado intermedio), no escribiendo el marcador a mano:
+    // la activacion muere despues de marcar la fase `local` como hecha y antes de terminar `entities`, que es
+    // un corte de verdad (pestaña cerrada, equipo apagado).
+    const realEncrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+    let injected = false;
+    const spy = vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(
+      async (algorithm: AlgorithmIdentifier, key: CryptoKey, data: BufferSource) => {
+        if (!injected) {
+          const marker = (await rawTransition()) as { done?: unknown } | undefined;
+          if (marker && Array.isArray(marker.done) && marker.done.includes('local')) {
+            injected = true;
+            throw new Error('fallo inyectado a mitad de la migracion');
+          }
+        }
+        return realEncrypt(algorithm, key, data);
+      },
+    );
+    try {
+      await expect(enableProtection('pin', PIN, undefined, FAST)).rejects.toThrow(/fallo inyectado/);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Lo que dejo el corte: sobre escrito y estado bloqueado, la fase `local` cifrada, el resto en claro y el
+    // marcador apuntando a la fase `local`.
+    expect(await getLockState()).toBe('locked');
+    const cut = await readLockTransition();
+    const nonceAtCut = await envelopeNonce();
+    expect(cut?.phase).toBe('locking');
+    expect(cut?.done).toEqual(['local']);
+    expect(await findPlaintextLeftovers()).not.toEqual([]);
+
+    lock();
+    await unlock('pin', PIN, undefined, FAST);
+
+    // La reanudacion legitima termina el trabajo: si el marcador del corte no estuviera firmado (o el
+    // desbloqueo lo descartara en vez de reanudarlo), todo lo que falto cifrar seguiria en claro y leerlo
+    // moriria con `PlaintextDataError`.
+    expect(await getLockState()).toBe('unlocked');
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+    expect(await getLocal<string>('recoveryCode')).toBe(CODE);
+    expect((await pendingMutations())[0].record.total).toBe(9000);
+    expect((await createIdbDeviceShareStore().load(INSTANCE))?.recovery).toEqual({ blobs: 'share-recuperacion' });
+    expect(await findPlaintextLeftovers()).toEqual([]);
+    expect(await readLockTransition()).toBeNull();
+
+    // El marcador del corte (capturado ANTES del desbloqueo) estaba firmado por la DEK y traia el nonce que el
+    // sobre tenia entonces: es lo que autoriza a reanudar. El nonce no puede haber rotado antes del cierre:
+    // mientras quede texto plano, el marcador tiene que seguir valiendo o el equipo no tendria como terminar.
+    expect(cut?.mac).toBeTruthy();
+    expect(cut?.nonce).toBe(nonceAtCut);
+
+    // Y sigue siendo el MISMO equipo: los datos se leen con la DEK del sobre despues de bloquear de nuevo.
+    lock();
+    await unlock('pin', PIN, undefined, FAST);
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+    await disableProtection();
+  });
+
+  it('un corte REAL en la entrada de la migracion (nada cifrado todavia) se reanuda igual', async () => {
+    await seedPlaintext();
+
+    // El fallo cae en el primer cifrado posterior a la escritura del sobre: la activacion muere en el mismo
+    // umbral de la migracion, cuando todavia no ha cifrado ni una fila. El marcador que queda en `fize-local`
+    // es el que escribio `enableProtection` (nada escrito a mano), y es el caso mas estrecho: si ese marcador
+    // no estuviera firmado, el desbloqueo lo descartaria y el equipo quedaria con el sobre puesto y TODOS los
+    // datos en claro, sin camino de vuelta (leerlos muere con `PlaintextDataError` y no hay transicion que
+    // reanudar ni forma de activar/desactivar de nuevo).
+    const realEncrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+    let injected = false;
+    const spy = vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(
+      async (algorithm: AlgorithmIdentifier, key: CryptoKey, data: BufferSource) => {
+        if (!injected && (await rawEnvelope()) !== undefined) {
+          injected = true;
+          throw new Error('fallo inyectado al entrar en la migracion');
+        }
+        return realEncrypt(algorithm, key, data);
+      },
+    );
+    try {
+      await expect(enableProtection('pin', PIN, undefined, FAST)).rejects.toThrow(/fallo inyectado/);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(injected).toBe(true);
+
+    const cut = await readLockTransition();
+    const nonceAtCut = await envelopeNonce();
+    expect(cut?.done).toEqual([]);
+    expect(await findPlaintextLeftovers()).not.toEqual([]);
+
+    lock();
+    await unlock('pin', PIN, undefined, FAST);
+
+    expect(await getLockState()).toBe('unlocked');
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+    expect(await getLocal<string>('recoveryCode')).toBe(CODE);
+    expect((await pendingMutations())[0].record.total).toBe(9000);
+    expect(await findPlaintextLeftovers()).toEqual([]);
+    expect(await readLockTransition()).toBeNull();
+    expect(cut?.mac).toBeTruthy();
+    expect(cut?.nonce).toBe(nonceAtCut);
+
+    await disableProtection();
+    expect(await getLockState()).toBe('off');
   });
 
   it('desactivar descifra TODO antes de borrar el sobre y la DEK', async () => {
@@ -929,6 +1079,128 @@ describe('deviceLock: el marcador de transicion no autoriza nada por si solo', (
     await disableProtection();
   });
 
+  it('un marcador `locking` CAPTURADO en una activacion correcta deja de autorizar', async () => {
+    await seedPlaintext();
+
+    // El atacante copia el marcador que la activacion deja escrito en `fize-local` mientras la migracion
+    // corre. La activacion termina bien (se rota el nonce del sobre y se borra el marcador), pero la copia
+    // ya esta hecha.
+    const captured = await captureLockingMarkerDuring(() => enableProtection('pin', PIN, undefined, FAST));
+    expect(captured.mac).toBeTruthy();
+    expect(typeof captured.nonce).toBe('string');
+    expect(await readLockTransition()).toBeNull();
+
+    lock();
+
+    // Ataque: con el equipo bloqueado se planta la llave del atacante, una fila de negocio y la copia del
+    // marcador. Si el nonce no rotara al cerrar la activacion, la copia seguiria perteneciendo a la
+    // transicion vigente del sobre: el desbloqueo "reanudaria" la activacion y cifraria con la DEK buena el
+    // texto plano inyectado, blanqueandolo como dato legitimo.
+    await (await kvDb()).put(KV_STORE, { privateJwk: { d: 'ATTACKER' } }, 'identity');
+    await (await entityDb()).put('restaurant', { id: 'inj-cap', instance_id: INSTANCE, name: 'Inyectado' });
+    await (await kvDb()).put(KV_STORE, captured, 'lockTransition');
+
+    await unlock('pin', PIN, undefined, FAST);
+
+    // Nada de lo inyectado quedo cifrado como si fuera legitimo...
+    expect(isEncryptedBlob(await (await kvDb()).get(KV_STORE, 'identity'))).toBe(false);
+    expect(isEncryptedBlob(await (await entityDb()).get('restaurant', 'inj-cap'))).toBe(false);
+    // ...ni se acepta como dato.
+    await expect(getLocal('identity')).rejects.toThrow(/sin cifrar/);
+    await expect(getIdbAdapter().get('restaurant', 'inj-cap', INSTANCE)).rejects.toThrow(/sin cifrar/);
+    // La copia rancia se descarta y el equipo queda desbloqueado (ni un intento fallido de mas).
+    expect(await readLockTransition()).toBeNull();
+    expect(await getLockState()).toBe('unlocked');
+    // Y lo que ya estaba cifrado sigue leyendose con normalidad.
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+    expect(await getLocal<string>('recoveryCode')).toBe(CODE);
+    // El nonce del sobre roto al cerrar la activacion: por eso la copia ya no pertenece a la transicion
+    // vigente (es el mecanismo que hace todo lo de arriba).
+    expect(await envelopeNonce()).not.toBe(captured.nonce);
+
+    await (await kvDb()).delete(KV_STORE, 'identity');
+    await (await entityDb()).delete('restaurant', 'inj-cap');
+    await disableProtection();
+  });
+
+  it('un marcador `locking` CAPTURADO de un corte REANUDADO tampoco autoriza', async () => {
+    await seedPlaintext();
+    await enableProtection('pin', PIN, undefined, FAST);
+
+    // Corte simulado con la forma que deja una activacion cortada: la fase `local` hecha, la fila del
+    // restaurante vuelta a quedar en claro y el marcador firmado por la DEK con el nonce vigente.
+    await (await entityDb()).put('restaurant', { id: 'r1', instance_id: INSTANCE, name: 'Fonda Secreta', slug: 'fonda-secreta' });
+    await writeLockTransition(
+      { v: 1, phase: 'locking', done: ['local'], startedAt: new Date().toISOString(), nonce: await envelopeNonce() },
+      getActiveDek()!,
+    );
+    // El atacante copia el marcador justo antes de que el usuario reanude.
+    const captured = (await rawTransition()) as Record<string, unknown>;
+
+    lock();
+    await unlock('pin', PIN, undefined, FAST);
+    expect(await readLockTransition()).toBeNull();
+
+    // Ataque: se planta la copia (con `done:['local']`, que se salta la fase donde vive `identity`) y una
+    // fila inyectada con el equipo ya bloqueado.
+    await (await kvDb()).put(KV_STORE, { privateJwk: { d: 'ATTACKER' } }, 'identity');
+    await (await entityDb()).put('restaurant', { id: 'inj-res', instance_id: INSTANCE, name: 'Inyectado' });
+    await (await kvDb()).put(KV_STORE, captured, 'lockTransition');
+    lock();
+
+    // Sin la rotacion, aqui el desbloqueo reanudaba con el `done` capturado: cifraba la fila inyectada y,
+    // como `local` se lo saltaba, `identity` seguia en claro y el desbloqueo fallaba en CADA intento
+    // (`No se pudo cifrar todo (local/identity)`), tambien con el codigo de recuperacion.
+    await unlock('pin', PIN, undefined, FAST);
+
+    expect(isEncryptedBlob(await (await kvDb()).get(KV_STORE, 'identity'))).toBe(false);
+    expect(isEncryptedBlob(await (await entityDb()).get('restaurant', 'inj-res'))).toBe(false);
+    await expect(getLocal('identity')).rejects.toThrow(/sin cifrar/);
+    await expect(getIdbAdapter().get('restaurant', 'inj-res', INSTANCE)).rejects.toThrow(/sin cifrar/);
+    expect(await readLockTransition()).toBeNull();
+    expect(await getLockState()).toBe('unlocked');
+    // Lo inyectado a proposito sigue en claro (no se blanquea) y lo del equipo sigue intacto y legible.
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+    expect(await getLocal<string>('recoveryCode')).toBe(CODE);
+    // El cierre de la reanudacion roto el nonce: la copia del corte ya no pertenece a la transicion vigente.
+    expect(await envelopeNonce()).not.toBe(captured.nonce);
+
+    await (await kvDb()).delete(KV_STORE, 'identity');
+    await (await entityDb()).delete('restaurant', 'inj-res');
+    await disableProtection();
+  });
+
+  it('un sobre de una version previa (sin `transitionNonce`) sigue reanudando su corte', async () => {
+    await seedPlaintext();
+    await enableProtection('pin', PIN, undefined, FAST);
+
+    // Sobre "viejo": la misma llave envuelta, pero sin el `transitionNonce` que estreno esta version (como
+    // lo dejaria la version anterior de la app en disco). Nada de lo que hay guardado se migra por eso.
+    const envelope = (await rawEnvelope()) as Record<string, unknown>;
+    delete envelope.transitionNonce;
+    await (await kvDb()).put(KV_STORE, envelope, 'lockEnvelope');
+    expect(await envelopeNonce()).toBeUndefined();
+
+    // Corte con un marcador de entonces: sin nonce, y sigue valiendo por su MAC.
+    await (await entityDb()).put('restaurant', { id: 'r1', instance_id: INSTANCE, name: 'Fonda Secreta', slug: 'fonda-secreta' });
+    await writeLockTransition(
+      { v: 1, phase: 'locking', done: ['local'], startedAt: new Date().toISOString() },
+      getActiveDek()!,
+    );
+    lock();
+    await unlock('pin', PIN, undefined, FAST);
+
+    expect(await readLockTransition()).toBeNull();
+    expect(await findPlaintextLeftovers()).toEqual([]);
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+    // Y al cerrar la transicion el sobre estrena el nonce que le faltaba, que es lo que hace que una copia
+    // del marcador de antes deje de autorizar a partir de ahi.
+    expect(typeof (await envelopeNonce())).toBe('string');
+
+    await disableProtection();
+    expect(await getLockState()).toBe('off');
+  });
+
   it('un marcador `unlocking` plantado a mano NO abre la puerta al texto plano', async () => {
     await enableProtection('pin', PIN, undefined, FAST);
 
@@ -1003,6 +1275,43 @@ describe('deviceLock: el marcador de transicion no autoriza nada por si solo', (
 
     // Y cuando el usuario pide desactivar de verdad, la proteccion se va: el reintento legitimo rota el
     // nonce otra vez y escribe el marcador del intento en curso.
+    await disableProtection();
+    expect(await getLockState()).toBe('off');
+    expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
+  });
+
+  it('reescribir el `nonce` de un marcador firmado con el del sobre no lo valida', async () => {
+    await seedPlaintext();
+    await enableProtection('pin', PIN, undefined, FAST);
+
+    // Un intento de desactivacion que falla a mitad deja un marcador firmado y rota el nonce del sobre: la
+    // copia pertenece a un intento que ya no es el vigente.
+    await (await entityDb()).put('order', { id: 'o1', instance_id: INSTANCE, __enc: 'v1.aaaa.bbbb.cccc' });
+    const captured = await captureMarkerDuring(() => disableProtection());
+    expect(captured.mac).toBeTruthy();
+    const capturedNonce = captured.nonce as string | undefined;
+    expect(capturedNonce).toBeTruthy();
+    // El nonce del sobre esta EN CLARO en `fize-local`: el atacante lo puede leer y copiar al marcador.
+    const currentNonce = await envelopeNonce();
+    expect(currentNonce).toBeTruthy();
+    expect(currentNonce).not.toBe(capturedNonce);
+    expect(await rawEnvelope()).toBeTruthy();
+
+    // Ya no hay nada que impida terminar la desactivacion: si el marcador reescrito valiera, el desbloqueo
+    // la terminaria solo y el equipo perderia el sobre.
+    await (await entityDb()).delete('order', 'o1');
+
+    // Ataque: se le pone al marcador capturado el nonce VIGENTE, conservando su MAC. El MAC se calcula sobre
+    // el payload firmado, que incluye el nonce: al no coincidir, el marcador no se puede autenticar y no
+    // autoriza nada aunque su campo `nonce` sea el bueno.
+    await (await kvDb()).put(KV_STORE, { ...captured, nonce: currentNonce }, 'lockTransition');
+    lock();
+    await unlock('pin', PIN, undefined, FAST);
+
+    expect(await getLockState()).toBe('unlocked');
+    expect(isEncryptedBlob(await rawEnvelope())).toBe(false);
+
+    // Y el usuario desactiva de verdad cuando quiere.
     await disableProtection();
     expect(await getLockState()).toBe('off');
     expect((await getIdbAdapter().get('restaurant', 'r1', INSTANCE))?.name).toBe('Fonda Secreta');
