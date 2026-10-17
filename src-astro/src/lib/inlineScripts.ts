@@ -48,28 +48,69 @@ export const OFFLINE_RETRY_SCRIPT = `(function () {
 /**
  * /local/pedidos: marca el chip del filtro que corresponde a `?status=`.
  *
+ * El script NO puede vivir dentro del contenido de la pagina: el contenido de /local/* viaja como <slot>
+ * de LockGate (isla hidratada) y Astro lo deja en un <template data-astro-template>; un <script> dentro de
+ * un <template> no se ejecuta NUNCA (y el que se inserta despues con el contenido tampoco). Por eso el
+ * layout lo emite fuera del slot.
+ */
+/**
+ * /local/pedidos: marca el chip del filtro que corresponde a `?status=`.
+ *
  * La pagina es prerenderizada, asi que `Astro.url.searchParams` es null en el
  * HTML generado y el chip activo quedaba siempre en «Todos» aunque el carril
  * filtrado fuese otro (QA pre-entrega 2026-10-13 #6). Aqui se lee la URL real,
  * en el cliente, que es donde existe.
+ *
+ * Los chips viven dentro del <slot> de LockGate (una isla hidratada): hasta que
+ * la isla monta, el HTML esta en un <template data-astro-template> y NO existe
+ * en el DOM, asi que un `querySelectorAll` al parsear encuentra cero chips. Por
+ * eso se reintenta hasta que aparezcan (y se observa el DOM, que es lo que avisa
+ * exactamente cuando aparecen) en vez de rendirse al primer intento.
  */
 export const PEDIDOS_FILTER_SCRIPT = `(function () {
-  var chips = document.querySelectorAll('[data-pedidos-chip]');
-  if (!chips.length) return;
   var VALIDOS = ['pending', 'preparing', 'ready', 'served', 'paid', 'cancelled'];
-  var status = '';
-  try {
-    status = new URLSearchParams(window.location.search).get('status') || '';
-  } catch (err) {
-    status = '';
+
+  function statusDeLaUrl() {
+    var status = '';
+    try {
+      status = new URLSearchParams(window.location.search).get('status') || '';
+    } catch (err) {
+      status = '';
+    }
+    return VALIDOS.indexOf(status) === -1 ? '' : status;
   }
-  if (VALIDOS.indexOf(status) === -1) status = '';
-  for (var i = 0; i < chips.length; i++) {
-    var chip = chips[i];
-    var activo = chip.getAttribute('data-pedidos-chip') === status;
-    chip.classList.toggle('active', activo);
-    chip.setAttribute('aria-pressed', activo ? 'true' : 'false');
-    if (activo) chip.setAttribute('aria-current', 'page');
-    else chip.removeAttribute('aria-current');
+
+  function pintar() {
+    var chips = document.querySelectorAll('[data-pedidos-chip]');
+    if (!chips.length) return false;
+    var status = statusDeLaUrl();
+    for (var i = 0; i < chips.length; i++) {
+      var chip = chips[i];
+      var activo = chip.getAttribute('data-pedidos-chip') === status;
+      chip.classList.toggle('active', activo);
+      chip.setAttribute('aria-pressed', activo ? 'true' : 'false');
+      if (activo) chip.setAttribute('aria-current', 'page');
+      else chip.removeAttribute('aria-current');
+    }
+    return true;
+  }
+
+  if (pintar()) return;
+
+  // Plan B por si no hay MutationObserver: unos pocos reintentos cortos.
+  var intentos = 0;
+  var timer = setInterval(function () {
+    if (pintar() || ++intentos >= 40) clearInterval(timer);
+  }, 25);
+
+  if (typeof MutationObserver === 'function') {
+    var observador = new MutationObserver(function () {
+      if (pintar()) {
+        observador.disconnect();
+        clearInterval(timer);
+      }
+    });
+    observador.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(function () { observador.disconnect(); }, 10000);
   }
 })();`;
