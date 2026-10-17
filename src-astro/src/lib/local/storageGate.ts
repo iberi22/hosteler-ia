@@ -30,17 +30,26 @@ function locksApi(): LocksLike | null {
 
 let tail: Promise<unknown> = Promise.resolve();
 
-/** Corre `fn` en exclusiva, esperando a que terminen las operaciones anteriores. */
+/** Toma el candado del origen (si el navegador lo tiene) y corre `fn`; sin Web Locks, corre `fn` tal cual. */
+function runGated<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = locksApi();
+  if (!locks) return fn();
+  return locks.request(STORAGE_GATE_LOCK, { mode: 'exclusive' }, () => fn()) as Promise<T>;
+}
+
+/**
+ * Corre `fn` en exclusiva. La cola FIFO de la pestaña va SIEMPRE delante (tambien cuando hay Web Locks) y el
+ * candado del origen se toma DENTRO de cada turno de la cola: fuera del turno, dos llamadas se pisarian
+ * (y llamarian a `fn` dos veces).
+ */
 export function withStorageGate<T>(fn: () => Promise<T>): Promise<T> {
-  const run = () => fn();
+  const run = () => runGated(fn);
   const next = tail.then(run, run);
   tail = next.then(
     () => undefined,
     () => undefined,
   );
-  const locks = locksApi();
-  if (!locks) return next;
-  return locks.request(STORAGE_GATE_LOCK, { mode: 'exclusive' }, run) as Promise<T>;
+  return next;
 }
 
 /** SOLO PARA TESTS: olvida la cola en curso (cada suite arranca limpia). */

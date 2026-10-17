@@ -71,9 +71,13 @@ const NAV = [
     </AppShell>
     <!--
       /local/pedidos: el chip activo del filtro lo marca el cliente (la pagina es prerenderizada).
-      Va FUERA del <LockGate> a proposito: lo que entra en el slot de una isla hidratada viaja dentro de
-      un <template data-astro-template> hasta que la isla monta, y un <script> dentro de un <template>
-      no se ejecuta nunca. Dentro del slot el script era letra muerta (los dos E2E del filtro fallaban).
+      Va FUERA del LockGate a proposito: lo que entra en el slot de una isla hidratada viaja dentro de
+      una plantilla de hidratacion hasta que la isla monta, y el bloque de codigo que hay ahi dentro
+      nunca se ejecuta. Dentro del slot el script era letra muerta (los dos E2E del filtro fallaban).
+      OJO: este comentario no puede escribir la etiqueta del script entre angulos. El paso de CSP
+      (scripts/gen-csp-headers.mjs) saca los hashes de los scripts inline con una expresion regular
+      sobre el HTML y una etiqueta suelta aqui dentro se traga el hash del script de verdad: el
+      navegador lo bloquea en silencio.
     -->
     {currentPath.startsWith("/local/pedidos") && <script is:inline set:html={PEDIDOS_FILTER_SCRIPT} />}
     <Toaster client:load position="bottom-right" />
