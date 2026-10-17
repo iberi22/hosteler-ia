@@ -181,6 +181,74 @@ async function inFlightEncryptThen(
 const inFlightEncryptThenDisable = (start: () => Promise<unknown>): Promise<void> => inFlightEncryptThen(start);
 
 /**
+ * Lanza `transition` (activar o desactivar), espera a que tenga el candado de escritura TOMADO y en ese
+ * hueco lanza `write`. El candado se detecta de verdad: la transicion esta dentro de `withStorageGate`
+ * cuando hace su primer cifrado/descifrado con el sobre ya escrito (el marcador se firma antes, asi que
+ * tambien se espera a que el sobre exista para no caer en ese primer cifrado de la activacion).
+ *
+ * Devuelve si la escritura se decidio MIENTRAS la transicion seguia con el candado. Con el estado leido
+ * fuera del candado, la escritura se resuelve en ese hueco (con la DEK vieja o con el 'off' anterior a la
+ * activacion) en vez de esperar su turno.
+ */
+async function writeWhileTransitionHoldsGate(
+  transition: () => Promise<unknown>,
+  write: () => Promise<unknown>,
+): Promise<boolean> {
+  const realEncrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+  const realDecrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+  let reached!: () => void;
+  const atTransition = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let open!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  let first = true;
+  const maybeHold = async (run: () => Promise<ArrayBuffer>): Promise<ArrayBuffer> => {
+    if (first && (await rawEnvelope()) !== undefined) {
+      first = false;
+      reached();
+      await hold;
+    }
+    return run();
+  };
+  const spyEncrypt = vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(
+    async (algorithm: AlgorithmIdentifier, key: CryptoKey, data: BufferSource) =>
+      maybeHold(() => realEncrypt(algorithm, key, data)),
+  );
+  const spyDecrypt = vi.spyOn(crypto.subtle, 'decrypt').mockImplementation(
+    async (algorithm: AlgorithmIdentifier, key: CryptoKey, data: BufferSource) =>
+      maybeHold(() => realDecrypt(algorithm, key, data)),
+  );
+  try {
+    const pending = transition();
+    pending.catch(() => undefined);
+    await atTransition;
+    let settled = false;
+    const inFlight = write();
+    inFlight.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    // Varias vueltas del bucle de eventos: leyendo el estado FUERA del candado, aqui ya estaria decidida.
+    await sleep(50);
+    const settledWhileHeld = settled;
+    open();
+    await pending;
+    await inFlight.catch(() => undefined);
+    return settledWhileHeld;
+  } finally {
+    spyEncrypt.mockRestore();
+    spyDecrypt.mockRestore();
+  }
+}
+
+/**
  * Corre `transition` y copia el marcador `lockTransition` que deja escrito en disco mientras corre (lo que
  * haria un atacante que espia el equipo a mitad de una desactivacion). Espera a que termine y se queda con
  * la copia: da igual si la transicion acabo bien o mal.
@@ -666,6 +734,42 @@ describe('deviceLock: escrituras en vuelo y transiciones', () => {
     await disableProtection();
   });
 
+  it('leer el estado FUERA del candado dejaria cifrada con la llave vieja la escritura que espera a desactivar', async () => {
+    await seedPlaintext();
+    await enableProtection('pin', PIN, undefined, FAST);
+
+    // La desactivacion ya tiene el candado tomado cuando la escritura se lanza. Leyendo el estado fuera
+    // del candado, la escritura guarda su foto de ANTES ('unlocked' + DEK vieja) y aterriza despues de que
+    // el sobre se borrara: el valor queda con `{__enc}` y sin llave que lo abra.
+    const settledWhileHeld = await writeWhileTransitionHoldsGate(
+      () => disableProtection(),
+      () => setLocal('settings', { publishedSlug: 'en-vuelo', tableCount: 4 }),
+    );
+
+    expect(settledWhileHeld).toBe(false);
+    expect(await getLockState()).toBe('off');
+    expect(await findEncryptedLeftovers()).toEqual([]);
+    // El valor se guardo con el estado NUEVO (en claro), no cifrado con la DEK que ya no existe.
+    expect(await getLocal('settings')).toEqual({ publishedSlug: 'en-vuelo', tableCount: 4 });
+  });
+
+  it('leer el estado FUERA del candado decidiria mal la escritura que espera a activar', async () => {
+    await seedPlaintext();
+
+    // La activacion ya tiene el candado tomado cuando la escritura se lanza. Leyendo el estado fuera del
+    // candado, la escritura se decide en ese hueco (con el estado de antes de activar) en vez de esperar su
+    // turno dentro del candado.
+    const settledWhileHeld = await writeWhileTransitionHoldsGate(
+      () => enableProtection('pin', PIN, undefined, FAST),
+      () => setLocal('settings', { publishedSlug: 'al-activar', tableCount: 8 }),
+    );
+
+    expect(settledWhileHeld).toBe(false);
+    expect(await findPlaintextLeftovers()).toEqual([]);
+    expect(isEncryptedBlob(await getStoredLocal('settings'))).toBe(true);
+    await disableProtection();
+    expect(await getLocal('settings')).toEqual({ publishedSlug: 'al-activar', tableCount: 8 });
+  });
 });
 
 describe('deviceLock: la DEK esta atada a la generacion del sobre', () => {
