@@ -5,7 +5,7 @@
 
 import type { IDBPDatabase } from 'idb';
 import type { StorageAdapter, DomainRecord } from './domain';
-import { getActiveDek, getLockState, LockedError } from './local/deviceLock';
+import { getActiveDek, getLockState, LockedError, withLockedWrite } from './local/deviceLock';
 import { decryptRow, encryptRow, isEncryptedBlob } from './local/rowCrypto';
 import { isTransitionPending } from './local/lockMigration';
 import { OUTBOX_STORE, outboxDb as openOutboxDb, resetLocalStoresForTests } from './local/localStores';
@@ -71,15 +71,6 @@ async function outboxDb(): Promise<IDBPDatabase | null> {
 }
 
 /** El `record` del outbox se guarda cifrado cuando la proteccion esta activa (es lo que se sube). */
-async function encodeEntry(entry: OutboxEntry): Promise<OutboxEntry> {
-  const state = await getLockState();
-  if (state === 'locked') throw new LockedError();
-  if (state !== 'unlocked') return entry;
-  const dek = getActiveDek();
-  if (!dek) throw new LockedError();
-  return { ...entry, record: await encryptRow(entry.entity, entry.record, dek) };
-}
-
 async function decodeEntry(entry: OutboxEntry): Promise<OutboxEntry> {
   const state = await getLockState();
   if (state !== 'unlocked') return entry;
@@ -89,9 +80,16 @@ async function decodeEntry(entry: OutboxEntry): Promise<OutboxEntry> {
   return { ...entry, record: await decryptRow(entry.entity, entry.record, dek) };
 }
 
+/**
+ * El cifrado del `record` va DENTRO del candado, con el estado releido: guardar un `{__enc}` despues de que
+ * otra operacion borrase el sobre dejaba una mutacion que ya nadie puede descifrar ni subir.
+ */
 async function putEntry(entry: OutboxEntry): Promise<void> {
-  const stored = await encodeEntry(entry);
-  await withStorageGate(async () => {
+  await withLockedWrite(async (ctx) => {
+    const stored =
+      ctx.state === 'unlocked'
+        ? { ...entry, record: await encryptRow(entry.entity, entry.record, ctx.dek) }
+        : entry;
     const database = await outboxDb();
     if (database) await database.put(OUTBOX_STORE, stored);
     else memoryOutbox = [...memoryOutbox.filter((e) => e.id !== stored.id), stored];

@@ -21,6 +21,7 @@ import {
   findEncryptedLeftovers,
   readLockTransition,
   runLockTransition,
+  verifyLockTransition,
   writeLockTransition,
 } from './lockMigration';
 import { KV_STORE, kvDb } from './localStores';
@@ -51,6 +52,12 @@ export interface LockEnvelope {
   wrappedRecovery: string;
   /** Iteraciones PBKDF2 con las que se derivo la KEK (600.000 en produccion). */
   iterations: number;
+  /**
+   * Generacion del sobre (aleatoria, nueva en cada activacion). La DEK que esta pestaña tiene en memoria
+   * solo vale para el sobre de SU generacion; sin esto, desactivar y reactivar en otra pestaña dejaba a
+   * esta escribiendo con una llave que nadie puede leer.
+   */
+  gen?: string;
 }
 
 export interface PasskeyPrfProvider {
@@ -104,6 +111,11 @@ export const LOCK_STORAGE_EVENT_KEY = 'fize-device-lock-event';
 let activeDek: CryptoKey | null = null;
 let currentMethod: 'pin' | 'passkey' | 'recovery' | null = null;
 let isLockedState = false;
+/**
+ * Generacion del sobre al que pertenece la DEK de memoria. Desactivar y volver a activar produce un sobre
+ * nuevo (con DEK nueva): la DEK vieja NO abre los datos nuevos y hay que soltarla.
+ */
+let activeDekGeneration: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Acceso crudo a `fize-local`
@@ -142,12 +154,60 @@ function isEnvelope(value: unknown): value is LockEnvelope {
 export async function getLockState(): Promise<LockState> {
   const raw = await readRaw<unknown>(ENVELOPE_KEY);
   if (!isEnvelope(raw)) return 'off';
+  if (activeDek && activeDekGeneration !== envelopeGeneration(raw)) {
+    // La DEK en memoria es de un sobre que ya no existe (desactivar+reactivar en otra pestaña, cambio de
+    // PIN): se suelta ANTES de contestar para que nadie escriba con la llave vieja. Se avisa a la pantalla
+    // porque desde aqui el equipo ya esta bloqueado.
+    dropActiveDek();
+    notifyLockListeners();
+  }
   if (isLockedState || !activeDek) return 'locked';
   return 'unlocked';
 }
 
+/** Identidad del sobre: `gen` (sobres nuevos) con respaldo del envoltorio (sobres de versiones previas). */
+function envelopeGeneration(envelope: LockEnvelope): string {
+  return typeof envelope.gen === 'string' && envelope.gen.length > 0 ? envelope.gen : envelope.wrappedDek;
+}
+
+function newGeneration(): string {
+  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+/** Suelta la DEK de ESTA pestaña: al recibir un aviso de otra pestaña o al detectar un sobre nuevo. */
+function dropActiveDek(): void {
+  activeDek = null;
+  activeDekGeneration = null;
+  currentMethod = null;
+  isLockedState = true;
+}
+
 export function getActiveDek(): CryptoKey | null {
   return activeDek;
+}
+
+/** Lo que una escritura necesita saber DENTRO del candado: si guardar en claro o con que DEK cifrar. */
+export type WriteContext = { state: 'off' } | { state: 'unlocked'; dek: CryptoKey };
+
+/**
+ * Corre `fn` con el candado de escritura tomado Y el estado releido DENTRO del candado.
+ *
+ * Por que: cifrar ANTES de entrar en el candado dejaba huerfanos. Si `disableProtection` tomaba el candado
+ * entre el cifrado y el `put`, la fila quedaba con `{__enc}` y el sobre ya borrado: datos perdidos (la
+ * llave nueva no abre lo que cifro la vieja). Aqui lo que se cifra y lo que se guarda pasan juntos por el
+ * mismo turno del candado, y si la proteccion se desactivo (o se activo) mientras se esperaba, `fn` ve el
+ * estado y la DEK vigentes.
+ *
+ * NO reentrante (ver storageGate.ts): no lo llames desde dentro de `withStorageGate` ni desde `fn`.
+ */
+export function withLockedWrite<T>(fn: (ctx: WriteContext) => Promise<T>): Promise<T> {
+  return withStorageGate(async () => {
+    const state = await getLockState();
+    if (state === 'locked') throw new LockedError();
+    const dek = activeDek;
+    if (state === 'unlocked' && !dek) throw new LockedError();
+    return fn(dek ? { state: 'unlocked', dek } : { state: 'off' });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -285,9 +345,7 @@ let storageListenerReady = false;
  * (el LockGate saca del DOM lo que estuviera a la vista). No se vuelve a publicar el aviso.
  */
 function applyRemoteLock(): void {
-  activeDek = null;
-  currentMethod = null;
-  isLockedState = true;
+  dropActiveDek();
   notifyLockListeners();
 }
 
@@ -329,16 +387,23 @@ function attachStorageListener(): void {
   });
 }
 
-/** Avisa a las OTRAS pestañas de que este equipo quedo bloqueado. */
+/**
+ * Avisa a las OTRAS pestañas de que el sobre cambio (se bloqueo, se activo o se desactivo la proteccion):
+ * la DEK que tuvieran en memoria ya no sirve y hay que soltarla.
+ *
+ * Se publica por los DOS caminos: BroadcastChannel y la clave de `localStorage` (el evento `storage` solo lo
+ * reciben las otras pestañas). Antes era uno u otro: si la pestaña ya habia abierto el canal (activar la
+ * proteccion lo abre), el respaldo por `storage` nunca se escribia y una pestaña sin BroadcastChannel se
+ * quedaba con la DEK vieja. Repetir el aviso es inofensivo: soltar la DEK dos veces es soltarla una.
+ */
 function publishLockMessage(): void {
   const message: LockMessage = { type: 'lock', at: Date.now() };
   const channel = channelFor();
   if (channel) {
     try {
       channel.postMessage(message);
-      return;
     } catch {
-      /* se cae al evento storage */
+      /* sin canal: queda el respaldo por almacenamiento */
     }
   }
   try {
@@ -349,7 +414,7 @@ function publishLockMessage(): void {
 }
 
 /**
- * Se suscribe a los bloqueos de OTRAS pestañas (BroadcastChannel y, si no hay, `storage`). Devuelve la
+ * Se suscribe a los bloqueos de OTRAS pestañas (BroadcastChannel y el respaldo `storage`). Devuelve la
  * funcion para desuscribirse. El listener de `storage` se registra una sola vez por pestaña.
  */
 export function subscribeLockEvents(listener: LockListener): () => void {
@@ -363,9 +428,7 @@ export function subscribeLockEvents(listener: LockListener): () => void {
 }
 
 export function lock(): void {
-  activeDek = null;
-  currentMethod = null;
-  isLockedState = true;
+  dropActiveDek();
   publishLockMessage();
 }
 
@@ -386,12 +449,68 @@ async function assertNotThrottled(policy: LockPolicy): Promise<void> {
   if (throttle.failures >= policy.maxAttempts && remaining > 0) throw new LockoutError(remaining);
 }
 
-async function registerFailure(policy: LockPolicy): Promise<void> {
-  const previous = await readRaw<LockThrottle>(THROTTLE_KEY);
-  const failures = (previous?.failures ?? 0) + 1;
-  const over = failures - policy.maxAttempts;
-  const blockedUntil = over >= 0 ? Date.now() + backoffMs(policy, over) : 0;
-  await writeRaw(THROTTLE_KEY, { failures, blockedUntil } satisfies LockThrottle);
+/**
+ * Lee y escribe el control de intentos en UNA transaccion de `fize-local`. Dos pestañas a la vez hacian
+ * read-modify-write y el contador se perdia: tres intentos simultaneos de tres pestañas dejaban
+ * `failures: 1` y todas seguian llegando al KDF. La transaccion (IndexedDB serializa las de escritura del
+ * mismo store, tambien entre conexiones) hace que cada intento sume exactamente uno.
+ */
+async function updateThrottle<T>(
+  mutate: (current: LockThrottle | undefined) => { next: LockThrottle; result: T },
+): Promise<T> {
+  const database = await kvDb();
+  const tx = database.transaction(KV_STORE, 'readwrite');
+  const done = tx.done;
+  done.catch(() => {
+    /* el error se propaga por el await de `done` */
+  });
+  const store = tx.objectStore(KV_STORE);
+  const current = (await store.get(THROTTLE_KEY)) as LockThrottle | undefined;
+  const { next, result } = mutate(current);
+  await store.put(next, THROTTLE_KEY);
+  await done;
+  return result;
+}
+
+interface AttemptClaim {
+  allowed: boolean;
+  /** Espera que queda por delante si el intento no esta permitido. */
+  retryAfterMs: number;
+  /** Numero de intento reservado (incluye este): el bloqueo se calcula sobre el. */
+  failures: number;
+}
+
+/** Reserva un intento de forma ATOMICA: no llegan al KDF mas intentos que los que el contador cobra. */
+async function claimAttempt(policy: LockPolicy): Promise<AttemptClaim> {
+  return updateThrottle<AttemptClaim>((current) => {
+    const failures = current?.failures ?? 0;
+    const retryAfterMs = Math.max(0, (current?.blockedUntil ?? 0) - Date.now());
+    if (failures >= policy.maxAttempts && retryAfterMs > 0) {
+      return { next: current as LockThrottle, result: { allowed: false, retryAfterMs, failures } };
+    }
+    const reserved = failures + 1;
+    // Pasado el limite, cada intento nuevo cuesta una espera, y se le cobra ANTES de tocar el KDF. Asi,
+    // con N pestañas a la vez, el numero de intentos que llegan al KDF esta acotado por el contador (como
+    // maximo uno mas que `maxAttempts`) en vez de crecer con el numero de pestañas.
+    const blockedUntil =
+      failures >= policy.maxAttempts
+        ? Date.now() + backoffMs(policy, reserved - policy.maxAttempts)
+        : (current?.blockedUntil ?? 0);
+    return {
+      next: { failures: reserved, blockedUntil },
+      result: { allowed: true, retryAfterMs: 0, failures: reserved },
+    };
+  });
+}
+
+/** Anota el fallo del intento reservado (`failures`) y la espera creciente que le toca. */
+async function registerFailure(policy: LockPolicy, failures: number): Promise<void> {
+  await updateThrottle((current) => {
+    const count = Math.max(current?.failures ?? 0, failures);
+    const over = count - policy.maxAttempts;
+    const blockedUntil = over >= 0 ? Date.now() + backoffMs(policy, over) : (current?.blockedUntil ?? 0);
+    return { next: { failures: count, blockedUntil }, result: undefined };
+  });
 }
 
 async function clearFailures(): Promise<void> {
@@ -437,6 +556,9 @@ async function enableProtectionLocked(
   // Resto de un intento que no llego a escribir el sobre: como el sobre se escribe ANTES de cifrar nada,
   // sin sobre no hay datos cifrados y el marcador es basura.
   if (await readLockTransition()) await clearLockTransition();
+  // Sobre nuevo, presupuesto de intentos nuevo: sin esto un contador viejo (de un equipo que estuvo
+  // bloqueado antes) haria saltar la espera antes de tiempo.
+  await clearFailures();
 
   if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
      await navigator.storage.persist();
@@ -467,14 +589,18 @@ async function enableProtectionLocked(
   const recoveryKek = await deriveRecoveryKek(recoveryRaw, policy.iterations, recSalt);
   const wrappedRecovery = await wrapDek(wrappableDek, recoveryKek, recSalt);
 
-  const envelope: LockEnvelope = { method, wrappedDek, wrappedRecovery, iterations: policy.iterations };
+  const envelope: LockEnvelope = { method, wrappedDek, wrappedRecovery, iterations: policy.iterations, gen: newGeneration() };
 
   // Marcador ANTES del sobre: si la pestaña muere a mitad de la migracion, al abrir otra vez el estado es
   // 'locked' (hay sobre y no hay DEK) y el primer desbloqueo reanuda desde la ultima fase marcada.
   await writeLockTransition({ v: 1, phase: 'locking', done: [], startedAt: new Date().toISOString() });
   await writeRaw(ENVELOPE_KEY, envelope);
+  // Las otras pestañas tienen la DEK del sobre ANTERIOR (o ninguna): se avisa en cuanto hay sobre nuevo
+  // para que la suelten y no escriban con una llave que ya no abre nada.
+  publishLockMessage();
 
   activeDek = await unwrapDek(wrappedDek, mainKek, false);
+  activeDekGeneration = envelopeGeneration(envelope);
   currentMethod = method;
   // Mientras se cifra lo que ya habia, nadie lee: quedaria texto plano a la vista a mitad de camino.
   isLockedState = true;
@@ -501,8 +627,10 @@ export async function unlock(
   const policy = policyOf(options);
   await assertNotThrottled(policy);
   return withLockMutex(async () => {
-    // Otro intento pudo gastar los ultimos intentos mientras este esperaba el turno.
-    await assertNotThrottled(policy);
+    // El intento se reserva DENTRO de una transaccion de `fize-local`: ni se pierde un fallo con varias
+    // pestañas a la vez, ni llegan al KDF mas intentos que los que el contador cobra.
+    const claim = await claimAttempt(policy);
+    if (!claim.allowed) throw new LockoutError(claim.retryAfterMs);
     try {
       const envelope = await readEnvelope();
       if (!isEnvelope(envelope)) {
@@ -515,6 +643,7 @@ export async function unlock(
       const pending = await readLockTransition();
       if (pending?.phase === 'locking') {
         activeDek = dek;
+        activeDekGeneration = envelopeGeneration(envelope);
         isLockedState = true;
         await withStorageGate(async () => {
           await runLockTransition('locking', dek);
@@ -524,14 +653,28 @@ export async function unlock(
           }
         });
         await clearLockTransition();
+      } else if (pending?.phase === 'unlocking' && (await verifyLockTransition(pending, dek))) {
+        // La pestaña que desactivaba murio a mitad. El marcador esta firmado por esta DEK: se TERMINA la
+        // desactivacion (el usuario ya lo habia pedido) en vez de dejar el equipo a medias. Un marcador
+        // que no se puede autenticar no se toca (ver `disableProtectionLocked`): no se reanuda ni se
+        // acepta texto plano por el.
+        try {
+          await completeDisable(dek);
+          await clearFailures();
+          return;
+        } catch {
+          // Un resto cifrado dañado o la cuota: se sigue con el desbloqueo normal (la proteccion queda
+          // activada y el usuario puede reintentar "Desactivar", que vuelve a mirarlo todo).
+        }
       }
 
       activeDek = dek;
+      activeDekGeneration = envelopeGeneration(envelope);
       isLockedState = false;
       currentMethod = method;
       await clearFailures();
     } catch (err) {
-      if (err instanceof LockedError) await registerFailure(policy);
+      if (err instanceof LockedError) await registerFailure(policy, claim.failures);
       throw err;
     }
   });
@@ -581,7 +724,9 @@ async function changePinLocked(oldPin: string, newPin: string, options?: LockOpt
      // Copia extractable SOLO para volver a envolver; no se exporta a JavaScript en ningun momento.
      rewrappable = await unwrapDek(envelope.wrappedDek, oldKek, true);
    } catch (err) {
-     if (err instanceof LockedError) await registerFailure(policy);
+     if (err instanceof LockedError) {
+       await registerFailure(policy, ((await readRaw<LockThrottle>(THROTTLE_KEY))?.failures ?? 0) + 1);
+     }
      throw err;
    }
    await clearFailures();
@@ -592,45 +737,82 @@ async function changePinLocked(oldPin: string, newPin: string, options?: LockOpt
      await writeRaw(ENVELOPE_KEY, envelope);
    });
    activeDek = await unwrapDek(envelope.wrappedDek, newKek, false);
+   // El sobre sigue siendo el mismo (`gen` no cambia): la DEK de memoria sigue siendo la del sobre.
+   activeDekGeneration = envelopeGeneration(envelope);
 }
 
 /**
  * Desactiva la proteccion. Primero DESCRIFRA todo y COMPRUEBA que no quede nada cifrado; solo entonces
  * borra el sobre y la DEK. Si se borrara antes, las filas quedarian con `{__enc}` sin llave y activar la
- * proteccion otra vez perderia los datos.
+ * proteccion otra vez perderia los datos (la DEK nueva no abre lo que cifro la vieja).
  */
 export async function disableProtection(): Promise<void> {
   return withLockMutex(disableProtectionLocked);
 }
 
-async function disableProtectionLocked(): Promise<void> {
-   const dek = activeDek;
-   if (!dek) throw new LockedError();
-   const envelope = await readEnvelope();
-   if (!isEnvelope(envelope)) throw new Error('Protección no activada');
+/** Marcador de desactivacion sin fases hechas (el estado inicial honesto de un reintento). */
+function freshUnlockingMarker(): Parameters<typeof writeLockTransition>[0] {
+  return { v: 1, phase: 'unlocking', done: [], startedAt: new Date().toISOString() };
+}
 
+/**
+ * Completa la desactivacion con una DEK concreta: la usan `disableProtection` y el desbloqueo que reanuda
+ * una desactivacion que quedo a medias (pestaña cerrada, equipo apagado).
+ */
+async function completeDisable(dek: CryptoKey): Promise<void> {
    await withStorageGate(async () => {
-     await writeLockTransition({ v: 1, phase: 'unlocking', done: [], startedAt: new Date().toISOString() });
-     await runLockTransition('unlocking', dek);
-     const leftovers = await findEncryptedLeftovers();
-     if (leftovers.length) {
-       throw new Error(
-         `No se pudo descifrar todo (${leftovers.join(', ')}). La protección sigue activada; vuelve a intentarlo.`,
-       );
+     const existing = await readLockTransition();
+     const resumable =
+       existing !== null && existing.phase === 'unlocking' && (await verifyLockTransition(existing, dek));
+     if (!resumable) {
+       // El marcador se escribe SIN mirar el que hubiera: uno sin firma valida (plantado, restaurado de una
+       // copia vieja) no puede decidir que fases ya estan hechas. El `done` se rehace desde cero y cada
+       // fase es idempotente.
+       await writeLockTransition(freshUnlockingMarker(), dek);
+     }
+     try {
+       await runLockTransition('unlocking', dek);
+       const leftovers = await findEncryptedLeftovers();
+       if (leftovers.length) {
+         throw new Error(
+           `No se pudo descifrar todo (${leftovers.join(', ')}). La protección sigue activada; vuelve a intentarlo.`,
+         );
+       }
+     } catch (err) {
+       // El marcador no puede quedarse diciendo que fases que no se completaron ya estan hechas: si no,
+       // cada reintento se las saltaria y el equipo se quedaria sin poder desactivar la proteccion.
+       try {
+         await writeLockTransition(freshUnlockingMarker(), dek);
+       } catch {
+         /* manda el error original */
+       }
+       throw err;
      }
      await deleteRaw(ENVELOPE_KEY);
      await deleteRaw(THROTTLE_KEY);
      await clearLockTransition();
    });
-
-   activeDek = null;
+   // Las otras pestañas tienen la DEK del sobre que acaba de desaparecer: se avisa para que la suelten.
+   publishLockMessage();
+   dropActiveDek();
    isLockedState = false;
-   currentMethod = null;
+}
+
+async function disableProtectionLocked(): Promise<void> {
+   const envelope = await readEnvelope();
+   if (!isEnvelope(envelope)) throw new Error('Protección no activada');
+   // `getLockState` suelta la DEK si es de un sobre que ya no es el vigente (otra pestaña desactivo y
+   // reactivo): con la llave vieja no se descifra nada y se quedaria el equipo bloqueado a medias.
+   if ((await getLockState()) !== 'unlocked') throw new LockedError();
+   const dek = activeDek;
+   if (!dek) throw new LockedError();
+   await completeDisable(dek);
 }
 
 /** SOLO PARA TESTS. */
 export function resetDeviceLockForTests(): void {
   activeDek = null;
+  activeDekGeneration = null;
   isLockedState = false;
   currentMethod = null;
   lockOpChain = Promise.resolve();

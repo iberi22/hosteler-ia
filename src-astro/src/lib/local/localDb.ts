@@ -10,10 +10,10 @@
 // `toUpperCase` sobre eso reventaba la copia de seguridad.
 import type { IDBPDatabase } from 'idb';
 
-import { getLockState, getActiveDek, LockedError } from './deviceLock';
+import { getLockState, getActiveDek, LockedError, withLockedWrite, type WriteContext } from './deviceLock';
 import { isPlaintextLocalKey, isTransitionPending } from './lockMigration';
 import { KV_STORE, kvDb, resetLocalStoresForTests } from './localStores';
-import { decryptValue, encryptValue, isEncryptedBlob, PlaintextDataError } from './rowCrypto';
+import { decryptValue, encryptValue, encryptionOrphanMessage, isEncryptedBlob, PlaintextDataError } from './rowCrypto';
 import { withStorageGate } from './storageGate';
 
 export const DB_NAME = 'fize-local';
@@ -59,15 +59,12 @@ function requireDek(): CryptoKey {
 
 /**
  * Un valor cifrado con el sobre borrado no se devuelve nunca como si fuera dato (seria basura). Y, al
- * reves: con la proteccion activa, un valor EN CLARO solo se acepta si hay una transicion a medias (a
- * mitad de desactivar parte de los datos ya esta descifrada y la DEK todavia existe).
+ * reves: con la proteccion activa, un valor EN CLARO solo se acepta si ESTA pestaña tiene una transicion de
+ * desactivacion a medias (a mitad de desactivar parte de los datos ya esta descifrada y la DEK todavia
+ * existe).
  */
 function assertReadable(key: LocalKey, value: unknown): void {
-  if (isEncryptedBlob(value)) {
-    throw new Error(
-      `Los datos de "${key}" siguen cifrados, pero este equipo no tiene la proteccion activada. Vuelve a activar el bloqueo con el mismo PIN.`,
-    );
-  }
+  if (isEncryptedBlob(value)) throw new Error(encryptionOrphanMessage(`"${key}"`));
 }
 
 function readUnlocked<T>(key: LocalKey, value: unknown, dek: CryptoKey): Promise<T> {
@@ -92,18 +89,21 @@ export async function getStoredLocal(key: LocalKey): Promise<unknown> {
 }
 
 export async function setLocal<T>(key: LocalKey, value: T): Promise<void> {
-  const stored = await prepareStoredValue(key, value);
-  await withStorageGate(async () => {
+  // El cifrado va DENTRO del candado y con el estado releido: si desactivar la proteccion gana el turno,
+  // este valor se guarda en claro (estado nuevo) en vez de quedar cifrado con una llave que ya no existe.
+  await withLockedWrite(async (ctx) => {
+    const stored = await prepareStoredValue(key, value, ctx);
     await (await db()).put(STORE, stored, key);
   });
 }
 
-async function prepareStoredValue(key: LocalKey, value: unknown): Promise<unknown> {
+async function prepareStoredValue(
+  key: LocalKey,
+  value: unknown,
+  ctx: WriteContext,
+): Promise<unknown> {
   if (isPlaintextLocalKey(key)) return value;
-  const state = await getLockState();
-  if (state === 'locked') throw new LockedError();
-  if (state === 'unlocked') return encryptValue(key, value, requireDek());
-  return value;
+  return ctx.state === 'unlocked' ? encryptValue(key, value, ctx.dek) : value;
 }
 
 export async function deleteLocal(key: LocalKey): Promise<void> {
@@ -125,54 +125,52 @@ export interface LocalTx {
  */
 
 export async function updateLocalAtomically(fn: (tx: LocalTx) => Promise<void>): Promise<void> {
-  const state = await getLockState();
-  if (state === 'locked') throw new LockedError();
-  const dek = state === 'unlocked' ? requireDek() : null;
+  // Todo (lecturas, cifrado y la transaccion) ocurre dentro del candado: cifrar fuera dejaba huerfanos si
+  // desactivar la proteccion se colaba en medio.
+  await withLockedWrite(async (ctx) => {
+    const gets = async <T>(key: LocalKey): Promise<T | undefined> => {
+       const database = await db();
+       const raw = (await database.get(STORE, key)) as T | undefined;
+       if (raw === undefined || isPlaintextLocalKey(key)) return raw;
+       if (ctx.state === 'unlocked') return readUnlocked<T>(key, raw, ctx.dek);
+       assertReadable(key, raw);
+       return raw;
+    };
 
-  const gets = async <T>(key: LocalKey): Promise<T | undefined> => {
-     const database = await db();
-     const raw = (await database.get(STORE, key)) as T | undefined;
-     if (raw === undefined || isPlaintextLocalKey(key)) return raw;
-     if (state === 'unlocked') return readUnlocked<T>(key, raw, dek!);
-     assertReadable(key, raw);
-     return raw;
-  };
+    const buffer: { op: 'put' | 'del', key: LocalKey, value?: unknown }[] = [];
 
-  const buffer: { op: 'put' | 'del', key: LocalKey, value?: unknown }[] = [];
+    await fn({
+        get: gets,
+        put: (key, value) => { buffer.push({ op: 'put', key, value }); },
+        del: (key) => { buffer.push({ op: 'del', key }); }
+    });
 
-  await fn({
-      get: gets,
-      put: (key, value) => { buffer.push({ op: 'put', key, value }); },
-      del: (key) => { buffer.push({ op: 'del', key }); }
-  });
+    // Se cifra ANTES de abrir la transaccion: una transaccion de IndexedDB se cierra sola en cuanto el
+    // control sale a un `await` que no sea una operacion suya.
+    const prepared: { op: 'put' | 'del', key: LocalKey, value?: unknown }[] = [];
+    for (const b of buffer) {
+       if (b.op === 'put') {
+          prepared.push({ op: 'put', key: b.key, value: await prepareStoredValue(b.key, b.value, ctx) });
+       } else {
+          prepared.push(b);
+       }
+    }
 
-  // Se cifra ANTES de abrir la transaccion: una transaccion de IndexedDB se cierra sola en cuanto el
-  // control sale a un `await` que no sea una operacion suya.
-  const prepared: { op: 'put' | 'del', key: LocalKey, value?: unknown }[] = [];
-  for (const b of buffer) {
-     if (b.op === 'put') {
-        prepared.push({ op: 'put', key: b.key, value: await prepareStoredValue(b.key, b.value) });
-     } else {
-        prepared.push(b);
-     }
-  }
-
-  // Execute tx
-  await withStorageGate(async () => {
-     const database = await db();
-     const tx = database.transaction(STORE, 'readwrite');
-     const ops: Promise<unknown>[] = [];
-     try {
-        for (const p of prepared) {
-           if (p.op === 'put') ops.push(tx.store.put(p.value, p.key));
-           else ops.push(tx.store.delete(p.key));
-        }
-        await Promise.all([...ops, tx.done]);
-     } catch (err) {
-        try { tx.abort(); } catch {}
-        await Promise.allSettled([...ops, tx.done]);
-        throw err;
-     }
+    // Execute tx
+    const database = await db();
+    const tx = database.transaction(STORE, 'readwrite');
+    const ops: Promise<unknown>[] = [];
+    try {
+       for (const p of prepared) {
+          if (p.op === 'put') ops.push(tx.store.put(p.value, p.key));
+          else ops.push(tx.store.delete(p.key));
+       }
+       await Promise.all([...ops, tx.done]);
+    } catch (err) {
+       try { tx.abort(); } catch {}
+       await Promise.allSettled([...ops, tx.done]);
+       throw err;
+    }
   });
 }
 

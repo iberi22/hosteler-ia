@@ -6,9 +6,9 @@
 import type { StorageAdapter, DomainRecord } from './domain';
 import { ensurePersistentStorage, reportIfQuotaExceeded } from './storageDurability';
 
-import { getLockState, getActiveDek, LockedError } from './local/deviceLock';
+import { getLockState, getActiveDek, LockedError, withLockedWrite } from './local/deviceLock';
 import { isTransitionPending } from './local/lockMigration';
-import { encryptRow, decryptRow, isEncryptedBlob } from './local/rowCrypto';
+import { encryptRow, decryptRow, encryptionOrphanMessage, isEncryptedBlob } from './local/rowCrypto';
 import { entityDb, INSTANCE_INDEX, resetLocalStoresForTests } from './local/localStores';
 import { withStorageGate } from './local/storageGate';
 
@@ -32,17 +32,25 @@ async function readStored(entity: string, record: DomainRecord, dek: CryptoKey):
   return decryptRow(entity, record, dek);
 }
 
+/**
+ * Con la proteccion DESACTIVADA una fila que sigue con `{__enc}` no es una fila: es un dato que se quedo sin
+ * llave (el sobre se borro sin descifrarlo). Devolverla dejaba el sobre cifrado en la pantalla como si
+ * fuera negocio. `localDb` y los shares ya lo rechazaban; el adapter tiene que hacer lo mismo.
+ */
+function assertNotEncrypted(entity: string, record: DomainRecord): void {
+  if (isEncryptedBlob(record)) {
+    throw new Error(encryptionOrphanMessage(`${entity}/${String((record as { id?: unknown }).id)}`));
+  }
+}
+
 /** Escritura con persist() en la primera vez y aviso visible si se agota la cuota. */
 async function write(entity: string, record: DomainRecord): Promise<void> {
   void ensurePersistentStorage();
-  const state = await getLockState();
-  if (state === 'locked') throw new LockedError();
-  // Se cifra ANTES del candado y de la transaccion: `crypto.subtle` es asincrono y una transaccion de
-  // IndexedDB se cierra sola en cuanto el control sale a un `await` que no sea una operacion suya.
-  const finalRecord = state === 'unlocked' ? await encryptRow(entity, record, await unlockedDek()) : record;
-
   try {
-    await withStorageGate(async () => {
+    // Estado, cifrado y `put` bajo el MISMO turno del candado: cifrar antes dejaba un `{__enc}` huerfano
+    // si desactivar la proteccion se colaba en medio (la llave nueva no abre lo que cifro la vieja).
+    await withLockedWrite(async (ctx) => {
+      const finalRecord = ctx.state === 'unlocked' ? await encryptRow(entity, record, ctx.dek) : record;
       const database = await entityDb();
       await database.put(entity, finalRecord);
     });
@@ -72,25 +80,24 @@ export class IndexedDBAdapter implements StorageAdapter {
    * aborta y no cambia nada. Las filas de las DEMAS instancias nunca se tocan.
    *
    * Con la proteccion activa: se RECHAZA si el equipo esta bloqueado y, si esta desbloqueado, las filas se
-   * cifran de antemano (fuera de la transaccion: un `await` de WebCrypto dentro de la transaccion la
-   * cerraria y el `put` moriria con "transaction is not active").
+   * cifran DENTRO del candado: un `await` de WebCrypto no puede quedar fuera, o una desactivacion que gane
+   * el turno borraria el sobre y dejaria las filas cifradas con una llave que ya no existe.
    */
   async replaceInstanceRows(instanceId: string, rowsByEntity: Record<string, DomainRecord[]>): Promise<void> {
     const names = Object.keys(rowsByEntity);
     if (names.length === 0) return;
     void ensurePersistentStorage();
 
-    const state = await getLockState();
-    if (state === 'locked') throw new LockedError();
-    const dek = state === 'unlocked' ? await unlockedDek() : null;
+    await withLockedWrite(async (ctx) => {
+      const prepared: Record<string, DomainRecord[]> = {};
+      for (const entity of names) {
+        const rows = rowsByEntity[entity];
+        prepared[entity] =
+          ctx.state === 'unlocked'
+            ? await Promise.all(rows.map((record) => encryptRow(entity, record, ctx.dek)))
+            : rows;
+      }
 
-    const prepared: Record<string, DomainRecord[]> = {};
-    for (const entity of names) {
-      const rows = rowsByEntity[entity];
-      prepared[entity] = dek ? await Promise.all(rows.map((record) => encryptRow(entity, record, dek))) : rows;
-    }
-
-    await withStorageGate(async () => {
       const database = await entityDb();
       const tx = database.transaction(names, 'readwrite');
       const done = tx.done;
@@ -142,6 +149,7 @@ export class IndexedDBAdapter implements StorageAdapter {
        const dek = await unlockedDek();
        return Promise.all(records.map(r => readStored(entity, r, dek)));
     }
+    for (const record of records) assertNotEncrypted(entity, record);
     return records;
 
   }
@@ -158,6 +166,7 @@ export class IndexedDBAdapter implements StorageAdapter {
        const dek = await unlockedDek();
        return await readStored(entity, record, dek);
     }
+    assertNotEncrypted(entity, record);
     return record;
 
   }

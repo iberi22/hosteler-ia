@@ -27,6 +27,19 @@ export class PlaintextDataError extends Error {
   }
 }
 
+/**
+ * Dato que sigue cifrado y ya no hay llave para abrirlo (el sobre se borro sin descifrarlo). El mensaje NO
+ * puede decir "vuelve a activar con el mismo PIN": cada activacion genera una DEK NUEVA, asi que reactivar
+ * el bloqueo no recupera nada.
+ */
+export function encryptionOrphanMessage(where: string): string {
+  return (
+    `Los datos de ${where} siguen cifrados, pero este equipo ya no tiene la llave que los abre. ` +
+    'Volver a activar el bloqueo no los recupera (cada activacion usa una llave nueva): solo se pueden ' +
+    'recuperar desde una copia de seguridad o volviendo a importar los datos de origen.'
+  );
+}
+
 export function base64UrlEncode(bytes: Uint8Array<ArrayBufferLike>): string {
   let binString = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {

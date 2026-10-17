@@ -18,7 +18,15 @@
 import type { IDBPDatabase } from 'idb';
 
 import type { DomainRecord } from '../domain';
-import { decryptRow, decryptValue, encryptRow, encryptValue, isEncryptedBlob } from './rowCrypto';
+import {
+  decryptRow,
+  decryptValue,
+  encryptRow,
+  encryptValue,
+  isEncryptedBlob,
+  openSealedString,
+  sealString,
+} from './rowCrypto';
 import {
   entityDb,
   entityNames,
@@ -56,6 +64,8 @@ export interface LockTransitionRecord {
   /** Fases ya terminadas (reanudable: se saltan al reanudar). */
   done: string[];
   startedAt: string;
+  /** MAC del marcador derivado de la DEK (ver `verifyLockTransition`). */
+  mac?: string;
 }
 
 export interface MigrationStep {
@@ -185,38 +195,86 @@ export function isLockTransition(value: unknown): value is LockTransitionRecord 
 }
 
 /**
- * Bandera SINCRONA de "hay una transicion a medias". Desactivar recorre cuatro almacenes y no es atomico: si
- * falla a mitad (una fila dañada, cuota), parte de los datos queda ya descifrada y parte no. Mientras la
- * transicion este pendiente, las lecturas aceptan las dos formas (texto plano y sobre); sin transicion
- * pendiente un dato sin sobre con la proteccion activa sigue siendo texto plano inyectado y se rechaza.
- * La mantiene la pestaña que hace la transicion, que es la unica que tiene la DEK en memoria.
+ * Bandera SINCRONA de "ESTA pestaña tiene una transicion a medias". Desactivar recorre cuatro almacenes y
+ * no es atomico: si falla a mitad (una fila dañada, cuota), parte de los datos queda ya descifrada y parte
+ * no. Mientras la transicion este pendiente, las lecturas aceptan las dos formas (texto plano y sobre).
+ *
+ * La bandera es SOLO de la instancia que ejecuta la transicion (`beginLocalTransition`), NUNCA se deduce de
+ * leer el marcador de IndexedDB: con el marcador como fuente de verdad, escribir
+ * `{phase:'unlocking'}` en `fize-local` (devtools, un perfil restaurado, una copia vieja) hacia que
+ * cualquier pestaña aceptase filas en claro —incluida `identity.privateJwk`— como si fueran legitimas.
  */
-let transitionPending = false;
+let localTransitionPhase: LockTransitionPhase | null = null;
 
-export function isTransitionPending(): boolean {
-  return transitionPending;
+/** Marca que ESTA instancia esta ejecutando una transicion (la llama `runLockTransition`). */
+export function beginLocalTransition(phase: LockTransitionPhase): void {
+  localTransitionPhase = phase;
 }
 
+/**
+ * Texto plano aceptado mientras ESTA pestaña descifra con la DEK en memoria. Solo la desactivacion (fase
+ * `unlocking`) deja filas legitimamente en claro; durante la activacion nada esta descifrado.
+ */
+export function isTransitionPending(): boolean {
+  return localTransitionPhase === 'unlocking';
+}
+
+/** Lectura PURA del marcador: leerlo no autoriza nada (ver la bandera de arriba). */
 export async function readLockTransition(): Promise<LockTransitionRecord | null> {
   const value = (await (await kvDb()).get(KV_STORE, LOCK_TRANSITION_KEY)) as unknown;
-  const record = isLockTransition(value) ? value : null;
-  transitionPending = record !== null;
-  return record;
+  return isLockTransition(value) ? value : null;
 }
 
-export async function writeLockTransition(record: LockTransitionRecord): Promise<void> {
-  transitionPending = true;
-  await (await kvDb()).put(KV_STORE, record, LOCK_TRANSITION_KEY);
+// ---------------------------------------------------------------------------
+// MAC del marcador
+//
+// El marcador se escribe en claro (hace falta antes de tener la DEK), pero NO se cree sin mas: se firma
+// sellando su contenido con la DEK vigente. Asi una pestaña solo reanuda o termina la transicion de
+// OTRA si de verdad tiene la llave del equipo: un marcador plantado no se puede autenticar y se ignora.
+// ---------------------------------------------------------------------------
+
+const TRANSITION_MAC_AAD = 'fize-lock-transition-v1';
+
+function transitionPayload(record: Pick<LockTransitionRecord, 'phase' | 'done' | 'startedAt'>): string {
+  return JSON.stringify({ phase: record.phase, done: [...record.done], startedAt: record.startedAt });
+}
+
+/** Firma (sella) el marcador con la DEK. */
+export async function signLockTransition(
+  record: Pick<LockTransitionRecord, 'phase' | 'done' | 'startedAt'>,
+  dek: CryptoKey,
+): Promise<string> {
+  return sealString(dek, TRANSITION_MAC_AAD, transitionPayload(record));
+}
+
+/** `true` solo si el marcador lo escribio alguien con la DEK de este equipo. */
+export async function verifyLockTransition(record: LockTransitionRecord, dek: CryptoKey): Promise<boolean> {
+  if (typeof record.mac !== 'string' || record.mac.length === 0) return false;
+  try {
+    return (await openSealedString(dek, TRANSITION_MAC_AAD, record.mac)) === transitionPayload(record);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Escribe el marcador. Con `dek` queda firmado; sin ella (activacion, antes de tener la DEK) queda sin
+ * MAC y solo se puede reanudar hacia la fase `locking`, que es idempotente y no abre ninguna puerta.
+ */
+export async function writeLockTransition(record: LockTransitionRecord, dek?: CryptoKey): Promise<void> {
+  const next = dek ? { ...record, mac: await signLockTransition(record, dek) } : record;
+  beginLocalTransition(next.phase);
+  await (await kvDb()).put(KV_STORE, next, LOCK_TRANSITION_KEY);
 }
 
 export async function clearLockTransition(): Promise<void> {
-  transitionPending = false;
+  localTransitionPhase = null;
   await (await kvDb()).delete(KV_STORE, LOCK_TRANSITION_KEY);
 }
 
 /** SOLO PARA TESTS. */
 export function resetLockMigrationForTests(): void {
-  transitionPending = false;
+  localTransitionPhase = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,17 +290,21 @@ export async function runLockTransition(phase: LockTransitionPhase, dek: CryptoK
   if (existing && existing.phase !== phase) {
     throw new Error(`Ya hay una transicion de bloqueo en curso (${existing.phase}).`);
   }
+  beginLocalTransition(phase);
   let record: LockTransitionRecord = existing ?? {
     v: 1,
     phase,
     done: [],
     startedAt: new Date().toISOString(),
   };
+  // El marcador se escribe ANTES del primer paso (y firmado): si la pestaña muere en medio, la siguiente
+  // sabe que hay una transicion a medias, que fase era y desde donde reanudar.
+  await writeLockTransition(record, dek);
   for (const step of migrationSteps()) {
     if (record.done.includes(step.id)) continue;
     await step.run(phase, dek);
     record = { ...record, done: [...record.done, step.id] };
-    await writeLockTransition(record);
+    await writeLockTransition(record, dek);
   }
   return record;
 }

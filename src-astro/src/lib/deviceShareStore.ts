@@ -6,11 +6,10 @@
 // son material criptografico del local: la migracion de `enableProtection` los recorre igual que las filas
 // del dominio (ver lockMigration.ts, fase `shares`).
 
-import { getActiveDek, getLockState, LockedError } from './local/deviceLock';
+import { getActiveDek, getLockState, LockedError, withLockedWrite } from './local/deviceLock';
 import { deviceShareValueKey, isTransitionPending } from './local/lockMigration';
 import { SHARES_STORE, sharesDb, resetLocalStoresForTests } from './local/localStores';
 import { decryptValue, encryptValue, isEncryptedBlob, PlaintextDataError } from './local/rowCrypto';
-import { withStorageGate } from './local/storageGate';
 
 export interface DeviceShares {
   device: any;
@@ -36,11 +35,11 @@ function requireDek(): CryptoKey {
 export function createIdbDeviceShareStore(): DeviceShareStore {
   return {
     async save(id, s) {
-      const state = await getLockState();
-      if (state === 'locked') throw new LockedError();
-      const stored: unknown =
-        state === 'unlocked' ? await encryptValue(deviceShareValueKey(id), s, requireDek()) : s;
-      await withStorageGate(async () => {
+      // El cifrado va DENTRO del candado (con el estado releido): un share con `{__enc}` guardado despues
+      // de borrar el sobre es material criptografico perdido y nadie lo puede abrir.
+      await withLockedWrite(async (ctx) => {
+        const stored: unknown =
+          ctx.state === 'unlocked' ? await encryptValue(deviceShareValueKey(id), s, ctx.dek) : s;
         const database = await sharesDb();
         await database.put(SHARES_STORE, stored, id);
       });
