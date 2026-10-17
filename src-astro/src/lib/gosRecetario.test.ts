@@ -103,6 +103,14 @@ describe('gosRecetario', () => {
       const none = matchIngredient('Pimenton', inventory);
       expect(none).toBeNull();
     });
+
+    it('rejects fuzzy matches (e.g. Tomate vs Tomate picado)', () => {
+      const inventory = [
+        { id: '1', name: 'Tomate picado', unit: 'kg', unitCost: 1000 }
+      ];
+      const match = matchIngredient('Tomate', inventory);
+      expect(match).toBeNull();
+    });
   });
 
   describe('gosRecipeToFizeLines', () => {
@@ -135,8 +143,10 @@ describe('gosRecetario', () => {
     });
 
     it('parses minutes', () => {
-      expect(parseMinutes('1 h 20 min')).toBe(1); // just takes first match
+      expect(parseMinutes('1 h 30 min')).toBe(90);
       expect(parseMinutes('20')).toBe(20);
+      expect(parseMinutes('1 h')).toBe(60);
+      expect(parseMinutes('3000')).toBe(1440); // Clamped
       expect(parseMinutes('rapido')).toBe(0); // default
     });
   });
@@ -150,6 +160,46 @@ describe('gosRecetario', () => {
       expect(decoded.ok).toBe(true);
       expect(decoded.recipes).toHaveLength(1);
       expect(decoded.recipes[0].title).toBe('Salad');
+    });
+
+    it('the encoded link must not contain id, instance_id, created_at, or notes', () => {
+      const recipes = [{
+        title: 'Secret Pizza',
+        main_ingredients: ['Dough'],
+        instructions: ['Bake'],
+        id: 'some_id',
+        instance_id: 'tenant_id',
+        created_at: '2021-01-01',
+        notes: 'Top secret recipe!'
+      }];
+
+      const encoded = encodeGosLink(recipes);
+      let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const rawJsonStr = new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
+      const payload = JSON.parse(rawJsonStr);
+
+      expect(payload.recipes[0].id).toBeUndefined();
+      expect(payload.recipes[0].instance_id).toBeUndefined();
+      expect(payload.recipes[0].created_at).toBeUndefined();
+      expect(payload.recipes[0].notes).toBeUndefined();
+    });
+
+    it('base64url round trip with a payload that produces + and / in standard base64', () => {
+      // Create characters that will definitively cause + and / in base64 output
+      // For instance, the sequence of bytes 0xFB, 0xEF or typical strings that align appropriately.
+      // Easiest is to provide an array of characters that force base64 to output '+' and '/'.
+      // e.g. "subjects???" -> "c3ViamVjdHM/Pz8="
+      const recipes = [{ title: 'subjects???', main_ingredients: ['>_>'], instructions: ['Mix'] }];
+      const encoded = encodeGosLink(recipes);
+
+      // Assure the encoded URL doesn't have '+' or '/'
+      expect(encoded).not.toContain('+');
+      expect(encoded).not.toContain('/');
+
+      const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${encoded}`);
+      expect(decoded.ok).toBe(true);
+      expect(decoded.recipes[0].title).toBe('subjects???');
     });
 
     it('rejects missing param', () => {

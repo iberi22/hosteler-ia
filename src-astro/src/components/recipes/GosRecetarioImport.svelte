@@ -13,8 +13,9 @@
 
   let inventory: InventoryMatch[] = [];
   let menuItems: { id: string; name: string }[] = [];
+  let existingRecipes: { id: string; name: string; menuItemId: string }[] = [];
 
-  let importedRecipes: { draft: GosRecipeDraft; lines: any[]; unmatched: string[]; menuItemId: string; status: 'pending' | 'success' | 'error'; errorMsg?: string }[] = [];
+  let importedRecipes: { draft: GosRecipeDraft; lines: any[]; unmatched: string[]; menuItemId: string; status: 'pending' | 'success' | 'error' | 'skipped'; errorMsg?: string }[] = [];
   let summary = '';
   let importing = false;
   let fileInput: HTMLInputElement;
@@ -27,6 +28,9 @@
 
       const menuRes = await api.get('/api/menu-items');
       if (menuRes.ok) menuItems = await menuRes.json();
+
+      const recRes = await api.get('/api/recipes');
+      if (recRes.ok) existingRecipes = await recRes.json();
 
       if (typeof window !== 'undefined' && window.location.search) {
         const decoded = decodeGosLink(window.location.search);
@@ -53,9 +57,17 @@
     });
   }
 
+  const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
   async function handleFileUpload(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
+
+    if (file.size > MAX_BYTES) {
+      alert('El archivo supera los 5 MB');
+      if (fileInput) fileInput.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -73,6 +85,11 @@
 
   function handlePaste() {
     if (!pasteText.trim()) return;
+    const byteSize = new TextEncoder().encode(pasteText).length;
+    if (byteSize > MAX_BYTES) {
+      alert('El texto pegado supera los 5 MB');
+      return;
+    }
     const res = parseGosVaultExport(pasteText);
     if (res.ok) {
       processRecipes(res.recipes);
@@ -98,6 +115,15 @@
       return;
     }
 
+    // Check for existing recipe with the same name on the same dish
+    const exists = existingRecipes.some(r => r.menuItemId === item.menuItemId && r.name === item.draft.title);
+    if (exists) {
+      item.status = 'skipped';
+      item.errorMsg = 'Ya existe en este plato (omitida)';
+      importedRecipes = [...importedRecipes];
+      return;
+    }
+
     item.status = 'pending';
     importing = true;
 
@@ -116,6 +142,7 @@
       const res = await api.post('/api/recipes', payload);
       if (res.ok) {
         item.status = 'success';
+        existingRecipes.push({ id: '', name: item.draft.title, menuItemId: item.menuItemId });
         updateSummary();
       } else {
         const data = await res.json();
@@ -133,7 +160,7 @@
 
   function updateSummary() {
     const successCount = importedRecipes.filter(r => r.status === 'success').length;
-    const errorCount = importedRecipes.filter(r => r.status === 'error').length;
+    const errorCount = importedRecipes.filter(r => r.status === 'error' || r.status === 'skipped').length;
 
     const allUnmatched = new Set<string>();
     for (const r of importedRecipes) {
@@ -181,6 +208,9 @@
           <div class="controls">
             {#if item.status === 'success'}
               <span class="badge success">Importada</span>
+            {:else if item.status === 'skipped'}
+              <span class="badge skipped">Omitida</span>
+              <div class="error-msg">{item.errorMsg}</div>
             {:else}
               <select bind:value={item.menuItemId}>
                 <option value="">Selecciona un plato...</option>
@@ -250,6 +280,7 @@
   }
   .recipe-row.success { border-color: #4ade80; background: rgba(74, 222, 128, 0.1); }
   .recipe-row.error { border-color: #f87171; }
+  .recipe-row.skipped { border-color: #fbbf24; background: rgba(251, 191, 36, 0.1); }
   .unmatched { color: #f87171; font-size: 0.85rem; }
   .stats, .lines { font-size: 0.85rem; opacity: 0.8; }
   .controls { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-end; min-width: 250px; }
@@ -263,6 +294,7 @@
   }
   .error-msg { color: #f87171; font-size: 0.85rem; text-align: right; }
   .badge.success { color: #4ade80; border: 1px solid #4ade80; padding: 0.2rem 0.5rem; border-radius: 99px; font-size: 0.8rem; }
+  .badge.skipped { color: #d97706; border: 1px solid #fbbf24; padding: 0.2rem 0.5rem; border-radius: 99px; font-size: 0.8rem; }
   .summary { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--swal-border); font-weight: 600; }
   .btn { padding: 0.55rem 1rem; border-radius: 0.5rem; font: inherit; cursor: pointer; border: 1px solid var(--swal-border); }
   .btn.primary { background: var(--swal-accent-cyan, #22d3ee); color: var(--swal-bg); border-color: transparent; font-weight: 600; }

@@ -34,19 +34,22 @@ export function parseGosVaultExport(raw: unknown): { ok: boolean; recipes: GosRe
       return { ok: false, recipes: [], error: 'El recetario no contiene una lista de recetas' };
     }
 
-    const parsedRecipes: GosRecipeDraft[] = recipes.map((r: any) => {
+    const parsedRecipes: GosRecipeDraft[] = [];
+    for (const r of recipes) {
+      if (!r) continue;
       // accepts bare record or {recipe: ...}
       const item = r.recipe && typeof r.recipe === 'object' ? r.recipe : r;
+      if (typeof item !== 'object') continue;
 
-      return {
+      parsedRecipes.push({
         title: typeof item.title === 'string' ? item.title : 'Sin título',
         main_ingredients: Array.isArray(item.main_ingredients) ? item.main_ingredients.filter((i: any) => typeof i === 'string') : [],
-        instructions: Array.isArray(item.instructions) ? item.instructions.filter((i: any) => typeof i === 'string') : [],
+        instructions: Array.isArray(item.instructions) ? item.instructions.filter((i: any) => typeof i === 'string' && i.trim() !== '') : [],
         servings: typeof item.servings === 'string' ? item.servings : undefined,
         prep_time: typeof item.prep_time === 'string' ? item.prep_time : undefined,
         cook_time: typeof item.cook_time === 'string' ? item.cook_time : undefined,
-      };
-    });
+      });
+    }
 
     return { ok: true, recipes: parsedRecipes };
   } catch (error: any) {
@@ -92,12 +95,13 @@ export function gosRecipeToFizeLines(
   for (const ingName of recipe.main_ingredients) {
     const match = matchIngredient(ingName, inventory);
     if (match) {
+      const cost = Number(match.unitCost);
       lines.push({
-        inventoryItemId: match.id, // we might need to map it appropriately depending on how InventoryMatch is used in components. The issue says: match.id
+        inventoryItemId: match.id,
         name: match.name,
         qty,
         unit: match.unit,
-        unitCost: match.unitCost,
+        unitCost: Number.isNaN(cost) ? 0 : (cost ?? 0),
       });
     } else {
       unmatched.push(ingName);
@@ -120,26 +124,39 @@ export function parseServings(raw: unknown): number {
 }
 
 export function parseMinutes(raw: unknown): number {
-  if (typeof raw === 'number') return Math.max(0, Math.floor(raw));
+  if (typeof raw === 'number') return Math.min(1440, Math.max(0, Math.floor(raw)));
   if (typeof raw === 'string') {
-    const match = raw.match(/\d+/);
-    if (match) {
-      const parsed = parseInt(match[0], 10);
-      if (parsed >= 0) return parsed;
+    let total = 0;
+    const hMatch = raw.match(/(\d+)\s*h/i);
+    const mMatch = raw.match(/(\d+)\s*m/i);
+
+    if (hMatch || mMatch) {
+      if (hMatch) total += parseInt(hMatch[1], 10) * 60;
+      if (mMatch) total += parseInt(mMatch[1], 10);
+      return Math.min(1440, total);
+    }
+
+    const fallback = raw.match(/\d+/);
+    if (fallback) {
+      return Math.min(1440, Math.max(0, parseInt(fallback[0], 10)));
     }
   }
   return 0;
 }
 
 export function encodeGosLink(recipes: Array<Record<string, unknown>>): string {
-  const draftRecipes = recipes.map(item => ({
-    title: typeof item.title === 'string' ? item.title : 'Sin título',
-    main_ingredients: Array.isArray(item.main_ingredients) ? item.main_ingredients.filter(i => typeof i === 'string') : [],
-    instructions: Array.isArray(item.instructions) ? item.instructions.filter(i => typeof i === 'string') : [],
-    ...(typeof item.servings === 'string' ? { servings: item.servings } : {}),
-    ...(typeof item.prep_time === 'string' ? { prep_time: item.prep_time } : {}),
-    ...(typeof item.cook_time === 'string' ? { cook_time: item.cook_time } : {}),
-  }));
+  const draftRecipes = [];
+  for (const item of recipes) {
+    if (!item || typeof item !== 'object') continue;
+    draftRecipes.push({
+      title: typeof item.title === 'string' ? item.title : 'Sin título',
+      main_ingredients: Array.isArray(item.main_ingredients) ? item.main_ingredients.filter(i => typeof i === 'string') : [],
+      instructions: Array.isArray(item.instructions) ? item.instructions.filter(i => typeof i === 'string' && i.trim() !== '') : [],
+      ...(typeof item.servings === 'string' ? { servings: item.servings } : {}),
+      ...(typeof item.prep_time === 'string' ? { prep_time: item.prep_time } : {}),
+      ...(typeof item.cook_time === 'string' ? { cook_time: item.cook_time } : {}),
+    });
+  }
 
   const payload = {
     format: GOS_VAULT_FORMAT,
