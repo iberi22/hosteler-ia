@@ -7,7 +7,7 @@
 import { Toaster } from "@swal/ui";
 import { AppShell } from "@swal/ui";
 import { themeBootScript } from "@swal/ui/theme-boot";
-import { NET_BANNER_SCRIPT } from "../lib/inlineScripts";
+import { NET_BANNER_SCRIPT, PEDIDOS_FILTER_SCRIPT } from "../lib/inlineScripts";
 import LockGate from "../components/local/LockGate.svelte";
 
 
@@ -69,6 +69,13 @@ const NAV = [
       <slot />
     </LockGate>
     </AppShell>
+    <!--
+      /local/pedidos: el chip activo del filtro lo marca el cliente (la pagina es prerenderizada).
+      Va FUERA del <LockGate> a proposito: lo que entra en el slot de una isla hidratada viaja dentro de
+      un <template data-astro-template> hasta que la isla monta, y un <script> dentro de un <template>
+      no se ejecuta nunca. Dentro del slot el script era letra muerta (los dos E2E del filtro fallaban).
+    -->
+    {currentPath.startsWith("/local/pedidos") && <script is:inline set:html={PEDIDOS_FILTER_SCRIPT} />}
     <Toaster client:load position="bottom-right" />
   </body>
 </html>

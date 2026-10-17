@@ -3,8 +3,13 @@
 // hacia el adapter remoto con reintentos exponenciales. Sin IDB (SSR/tests sin
 // fake-indexeddb) cae a outbox en memoria.
 
-import { openDB, type IDBPDatabase } from 'idb';
+import type { IDBPDatabase } from 'idb';
 import type { StorageAdapter, DomainRecord } from './domain';
+import { getActiveDek, getLockState, LockedError } from './local/deviceLock';
+import { decryptRow, encryptRow, isEncryptedBlob } from './local/rowCrypto';
+import { isTransitionPending } from './local/lockMigration';
+import { OUTBOX_STORE, outboxDb as openOutboxDb, resetLocalStoresForTests } from './local/localStores';
+import { withStorageGate } from './local/storageGate';
 
 export type MutationOp = 'create' | 'update' | 'del';
 
@@ -18,12 +23,9 @@ export interface OutboxEntry {
   createdAt: number;
 }
 
-const DB_NAME = 'fize-outbox';
-const DB_VERSION = 1;
 export const MAX_ATTEMPTS = 5;
 export const BACKOFF_BASE_MS = 500;
 
-let dbPromise: Promise<IDBPDatabase> | null = null;
 let memoryOutbox: OutboxEntry[] = [];
 let onlineOverride: boolean | null = null;
 
@@ -35,7 +37,7 @@ function genId(): string {
 }
 
 export function resetSyncForTests(): void {
-  dbPromise = null;
+  resetLocalStoresForTests();
   memoryOutbox = [];
   onlineOverride = null;
 }
@@ -43,14 +45,11 @@ export function resetSyncForTests(): void {
 // Vacía el outbox persistido (aislamiento entre tests)
 export async function clearOutbox(): Promise<void> {
   memoryOutbox = [];
-  if (typeof indexedDB === 'undefined') {
-    dbPromise = null;
-    return;
-  }
-  const database = await outboxDb();
-  if (database) {
-    await database.clear('outbox');
-  }
+  if (typeof indexedDB === 'undefined') return;
+  await withStorageGate(async () => {
+    const database = await outboxDb();
+    if (database) await database.clear(OUTBOX_STORE);
+  });
 }
 
 // Solo tests: fuerza el estado online/offline (jsdom no permite navigator.onLine)
@@ -68,16 +67,35 @@ export function isOnline(): boolean {
 
 async function outboxDb(): Promise<IDBPDatabase | null> {
   if (typeof indexedDB === 'undefined') return null;
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(database) {
-        if (!database.objectStoreNames.contains('outbox')) {
-          database.createObjectStore('outbox', { keyPath: 'id' });
-        }
-      },
-    });
-  }
-  return dbPromise;
+  return openOutboxDb();
+}
+
+/** El `record` del outbox se guarda cifrado cuando la proteccion esta activa (es lo que se sube). */
+async function encodeEntry(entry: OutboxEntry): Promise<OutboxEntry> {
+  const state = await getLockState();
+  if (state === 'locked') throw new LockedError();
+  if (state !== 'unlocked') return entry;
+  const dek = getActiveDek();
+  if (!dek) throw new LockedError();
+  return { ...entry, record: await encryptRow(entry.entity, entry.record, dek) };
+}
+
+async function decodeEntry(entry: OutboxEntry): Promise<OutboxEntry> {
+  const state = await getLockState();
+  if (state !== 'unlocked') return entry;
+  if (!isEncryptedBlob(entry.record) && isTransitionPending()) return entry;
+  const dek = getActiveDek();
+  if (!dek) throw new LockedError();
+  return { ...entry, record: await decryptRow(entry.entity, entry.record, dek) };
+}
+
+async function putEntry(entry: OutboxEntry): Promise<void> {
+  const stored = await encodeEntry(entry);
+  await withStorageGate(async () => {
+    const database = await outboxDb();
+    if (database) await database.put(OUTBOX_STORE, stored);
+    else memoryOutbox = [...memoryOutbox.filter((e) => e.id !== stored.id), stored];
+  });
 }
 
 export async function enqueueMutation(
@@ -95,41 +113,37 @@ export async function enqueueMutation(
     attempts: 0,
     createdAt: Date.now(),
   };
-  const database = await outboxDb();
-  if (database) {
-    await database.put('outbox', entry);
-  } else {
-    memoryOutbox.push(entry);
-  }
+  await putEntry(entry);
   return entry;
 }
 
+/**
+ * Mutaciones pendientes, con los `record` ya descifrados (es lo que se sube). Con el equipo bloqueado
+ * devuelve lista vacia en vez de lanzar: la pantalla que solo cuenta pendientes no puede reventar por
+ * estar bloqueada, y sin DEK no hay nada que drenar.
+ */
 export async function pendingMutations(): Promise<OutboxEntry[]> {
+  const state = await getLockState();
+  if (state === 'locked') return [];
   const database = await outboxDb();
-  if (database) {
-    const all = (await database.getAll('outbox')) as OutboxEntry[];
-    return all.sort((a, b) => a.createdAt - b.createdAt);
-  }
-  return [...memoryOutbox].sort((a, b) => a.createdAt - b.createdAt);
+  const all = database ? ((await database.getAll(OUTBOX_STORE)) as OutboxEntry[]) : [...memoryOutbox];
+  const entries = state === 'unlocked' ? await Promise.all(all.map((entry) => decodeEntry(entry))) : all;
+  return entries.sort((a, b) => a.createdAt - b.createdAt);
 }
 
 async function removeEntry(id: string): Promise<void> {
-  const database = await outboxDb();
-  if (database) {
-    await database.delete('outbox', id);
-  } else {
-    memoryOutbox = memoryOutbox.filter((e) => e.id !== id);
-  }
+  await withStorageGate(async () => {
+    const database = await outboxDb();
+    if (database) {
+      await database.delete(OUTBOX_STORE, id);
+    } else {
+      memoryOutbox = memoryOutbox.filter((e) => e.id !== id);
+    }
+  });
 }
 
 async function bumpAttempts(entry: OutboxEntry): Promise<void> {
-  const database = await outboxDb();
-  const next = { ...entry, attempts: entry.attempts + 1 };
-  if (database) {
-    await database.put('outbox', next);
-  } else {
-    memoryOutbox = memoryOutbox.map((e) => (e.id === entry.id ? next : e));
-  }
+  await putEntry({ ...entry, attempts: entry.attempts + 1 });
 }
 
 export function backoffDelayMs(attempts: number): number {

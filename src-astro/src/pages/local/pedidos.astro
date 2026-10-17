@@ -5,7 +5,6 @@ import KitchenQueue from "../../components/orders/KitchenQueue.svelte";
 export const prerender = true;
 import LocalLayout from "../../layouts/LocalLayout.astro";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS } from "../../lib/orderStateMachine";
-import { PEDIDOS_FILTER_SCRIPT } from "../../lib/inlineScripts";
 
 // La pagina se prerenderiza: `Astro.url.searchParams` siempre esta vacio en el HTML generado,
 // asi que el filtro NO puede resolverse aqui (QA pre-entrega 2026-10-13 #6: con `?status=paid`
@@ -58,8 +57,8 @@ const laneStatuses = [...ORDER_STATUSES];
 
     <KitchenQueue client:load autoPublish={false} statuses={laneStatuses} />
 
-    <!-- Marca el chip activo en el cliente (QA #6): al ir despues de los chips, ya existen en el DOM. -->
-    <script is:inline set:html={PEDIDOS_FILTER_SCRIPT} />
+    <!-- El script que marca el chip activo (QA #6) lo emite LocalLayout FUERA del <LockGate>: aqui
+         dentro quedaria en el <template> del slot de la isla y no se ejecutaria. -->
   </main>
 </LocalLayout>
 
