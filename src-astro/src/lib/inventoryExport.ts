@@ -75,7 +75,7 @@ export interface EncryptedInventorySnapshot {
   kdf: { name: 'PBKDF2'; hash: 'SHA-256'; iterations: number };
   salt: string;
   iv: string;
-  check?: string;
+  check: string;
   ciphertext: string;
 }
 
@@ -212,7 +212,7 @@ export async function sealInventorySnapshot(
 
   const { key, hmacKey } = await deriveKeys(passphrase, salt, KDF_ITERATIONS);
 
-  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${saltB64}`);
+  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${saltB64}|${ivB64}`);
   const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
   const check = toB64(new Uint8Array(checkSig));
 
@@ -269,6 +269,14 @@ function validatePlainSnapshot(data: unknown): PlainInventorySnapshot {
     }
 
     if (i.sku !== undefined && i.sku !== null && typeof i.sku !== 'string') {
+      throw new InventoryExportError('formato');
+    }
+
+    if (i.unit !== undefined && i.unit !== null && typeof i.unit !== 'string') {
+      throw new InventoryExportError('formato');
+    }
+
+    if (i.locationId !== undefined && i.locationId !== null && typeof i.locationId !== 'string') {
       throw new InventoryExportError('formato');
     }
 
@@ -376,7 +384,7 @@ export async function openInventorySnapshot(
 
   const { key, hmacKey } = await deriveKeys(passphrase, salt, e.kdf.iterations);
 
-  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${e.salt}`);
+  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${e.salt}|${e.iv}`);
   const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
   const expectedCheckBin = new Uint8Array(checkSig);
 
@@ -406,6 +414,10 @@ export async function openInventorySnapshot(
   }
 
   // A tampered salt is indistinguishable from a wrong passphrase: it returns clave
+  // Classification and compatibility:
+  // Check is mandatory for all v1 envelopes.
+  // A tampered salt or check with the right password gives clave.
+  // A tampered iv also gives clave because it is part of the HMAC payload.
   let decryptedData: unknown;
   try {
     decryptedData = JSON.parse(new TextDecoder().decode(plain));

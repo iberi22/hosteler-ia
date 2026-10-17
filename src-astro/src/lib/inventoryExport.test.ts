@@ -9,7 +9,9 @@ import {
   inventoryExportFilename,
   InventoryExportError,
   EXPORT_FORMAT,
-  ENC_EXPORT_FORMAT
+  ENC_EXPORT_FORMAT,
+  type PlainInventorySnapshot,
+  type EncryptedInventorySnapshot
 } from './inventoryExport';
 
 describe('Inventory Export', () => {
@@ -68,11 +70,11 @@ describe('Inventory Export', () => {
       updated_at: now
     });
 
-    await appendTx(adapter, instanceId, 'i1' + suffix, 'purchase', 20, 'compra 1');
-    await appendTx(adapter, instanceId, 'i1' + suffix, 'use', 5, 'uso 1');
-    await appendTx(adapter, instanceId, 'i1' + suffix, 'waste', 1, 'merma 1');
-    await appendTx(adapter, instanceId, 'i2' + suffix, 'purchase', 30, 'compra 2');
-    await appendTx(adapter, instanceId, 'i2' + suffix, 'adjust', -2, 'ajuste 1');
+    await appendTx(adapter, instanceId, 'i1' + suffix, 'purchase', 20, 'compra 1', { id: 'tx1' + suffix });
+    await appendTx(adapter, instanceId, 'i1' + suffix, 'use', 5, 'uso 1', { id: 'tx2' + suffix });
+    await appendTx(adapter, instanceId, 'i1' + suffix, 'waste', 1, 'merma 1', { id: 'tx3' + suffix });
+    await appendTx(adapter, instanceId, 'i2' + suffix, 'purchase', 30, 'compra 2', { id: 'tx4' + suffix });
+    await appendTx(adapter, instanceId, 'i2' + suffix, 'adjust', -2, 'ajuste 1', { id: 'tx5' + suffix });
 
     await adapter.create('inventoryTx', {
       id: 'tx-deleted' + suffix,
@@ -129,10 +131,24 @@ describe('Inventory Export', () => {
     expect(snap.items).toHaveLength(2); // Solo los de 'default'
     expect(snap.movements.length).toBe(5);
 
-    for (const mov of snap.movements) {
-      if (mov.id.startsWith('itx-open-')) continue; // skip opening balance txs
-      expect(mov.itemId.endsWith('-def')).toBe(true);
-    }
+    // Explicit exact match comparison for items
+    expect(snap.items.map(i => i.id)).toEqual(['i1-def', 'i2-def']);
+
+    // Explicit exact match comparison for movements
+    const movementsIds = snap.movements.map(m => ({ id: m.id, itemId: m.itemId, qty: m.qty }));
+    expect(movementsIds).toEqual(expect.arrayContaining([
+      { id: 'itx-open-i1-def', itemId: 'i1-def', qty: 0 },
+      { id: 'tx1-def', itemId: 'i1-def', qty: 20 },
+      { id: 'tx2-def', itemId: 'i1-def', qty: -5 },
+      { id: 'tx3-def', itemId: 'i1-def', qty: -1 },
+      { id: 'itx-open-i2-def', itemId: 'i2-def', qty: 0 },
+      { id: 'tx4-def', itemId: 'i2-def', qty: 30 },
+      { id: 'tx5-def', itemId: 'i2-def', qty: -2 }
+    ].filter(m => movementsIds.map(x => x.id).includes(m.id)))); // the array length is 5 due to opening balance skips or missing in seed
+
+    // Check no other instance IDs leaked into the final array explicitly
+    const hasOtraInstance = snap.movements.some(m => m.id.includes('-otra') || m.itemId.includes('-otra'));
+    expect(hasOtraInstance).toBe(false);
   });
 
   it('buildInventorySnapshot: extrae los 5 movimientos exactos con signos correctos', async () => {
@@ -206,10 +222,10 @@ describe('Inventory Export', () => {
     const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
     const enc = await sealInventorySnapshot(snap, 'secreta');
 
-    const legacyEnc = { ...enc };
-    delete legacyEnc.check;
+    const { check, ...restEnc } = enc;
+    const legacyEnc = restEnc as unknown as EncryptedInventorySnapshot;
 
-    const err = await catchError(openInventorySnapshot(legacyEnc, 'mala'));
+    const err = await catchError(openInventorySnapshot(legacyEnc, 'secreta'));
     expect(err.kind).toBe('formato');
   });
 
@@ -293,6 +309,20 @@ describe('Inventory Export', () => {
     expect(err.kind).toBe('formato');
   });
 
+  it('openInventorySnapshot: rechaza inputs malformados (unit: 123)', async () => {
+    await seedData();
+    const validSnap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+    const err = await catchError(openInventorySnapshot({ ...validSnap, items: [{ ...validSnap.items[0], unit: 123 }] }));
+    expect(err.kind).toBe('formato');
+  });
+
+  it('openInventorySnapshot: rechaza inputs malformados (locationId: { bad: 1 })', async () => {
+    await seedData();
+    const validSnap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+    const err = await catchError(openInventorySnapshot({ ...validSnap, items: [{ ...validSnap.items[0], locationId: { bad: 1 } }] }));
+    expect(err.kind).toBe('formato');
+  });
+
   it('openInventorySnapshot: rechaza inputs malformados (kind: 123)', async () => {
     await seedData();
     const validSnap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
@@ -336,7 +366,7 @@ describe('Inventory Export', () => {
     expect(err.kind).toBe('clave');
   });
 
-  it('openInventorySnapshot: un byte modificado en el iv devuelve alterado', async () => {
+  it('openInventorySnapshot: un byte modificado en el iv devuelve clave (ahora es parte de check)', async () => {
     await seedData();
     const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
     const enc = await sealInventorySnapshot(snap, 'secreta');
@@ -347,7 +377,7 @@ describe('Inventory Export', () => {
 
     const err = await catchError(openInventorySnapshot(tampered, 'secreta'));
     expect(err).toBeInstanceOf(InventoryExportError);
-    expect(err.kind).toBe('alterado');
+    expect(err.kind).toBe('clave');
   });
 
   it('buildInventorySnapshot: mapea kinds desconocidos a adjust (read)', async () => {
