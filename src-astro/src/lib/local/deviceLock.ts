@@ -23,6 +23,7 @@ import {
   runLockTransition,
   verifyLockTransition,
   writeLockTransition,
+  type LockTransitionRecord,
 } from './lockMigration';
 import { KV_STORE, kvDb } from './localStores';
 import { withStorageGate } from './storageGate';
@@ -58,6 +59,13 @@ export interface LockEnvelope {
    * esta escribiendo con una llave que nadie puede leer.
    */
   gen?: string;
+  /**
+   * Nonce de la transicion de bloqueo vigente de ESTE sobre. Los marcadores `lockTransition` lo llevan
+   * dentro y se firman con el, y `completeDisable` lo rota en cada intento NUEVO: asi un marcador firmado
+   * capturado de un intento anterior no se puede reutilizar para descifrar el equipo en un desbloqueo
+   * posterior. Los sobres de versiones previas no lo traen (ver `envelopeTransitionNonce`).
+   */
+  transitionNonce?: string;
 }
 
 export interface PasskeyPrfProvider {
@@ -174,6 +182,37 @@ function newGeneration(): string {
   return base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
 }
 
+/**
+ * Nonce de la transicion vigente del sobre. `null` en sobres escritos por versiones previas (no lo traen):
+ * esos solo admiten sus propios marcadores de entonces, y el primer intento de desactivar los actualiza.
+ */
+function envelopeTransitionNonce(envelope: LockEnvelope): string | null {
+  return typeof envelope.transitionNonce === 'string' && envelope.transitionNonce.length > 0
+    ? envelope.transitionNonce
+    : null;
+}
+
+function newTransitionNonce(): string {
+  return base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+/**
+ * Un marcador de transicion solo autoriza algo si (1) lo firmo la DEK de ESTE sobre y (2) pertenece a la
+ * transicion vigente de ese sobre. Sin (1) un marcador plantado a mano mandaria sobre datos que no son
+ * suyos (cifrando texto plano inyectado o descifrando el equipo); sin (2) bastaria con capturar un
+ * marcador firmado en un intento anterior para volver a usarlo mas tarde.
+ */
+async function markerAuthorizesTransition(
+  marker: LockTransitionRecord,
+  dek: CryptoKey,
+  envelope: LockEnvelope,
+): Promise<boolean> {
+  if (!(await verifyLockTransition(marker, dek))) return false;
+  const nonce = envelopeTransitionNonce(envelope);
+  if (nonce === null) return marker.nonce === undefined;
+  return marker.nonce === nonce;
+}
+
 /** Suelta la DEK de ESTA pestaña: al recibir un aviso de otra pestaña o al detectar un sobre nuevo. */
 function dropActiveDek(): void {
   activeDek = null;
@@ -197,6 +236,11 @@ export type WriteContext = { state: 'off' } | { state: 'unlocked'; dek: CryptoKe
  * llave nueva no abre lo que cifro la vieja). Aqui lo que se cifra y lo que se guarda pasan juntos por el
  * mismo turno del candado, y si la proteccion se desactivo (o se activo) mientras se esperaba, `fn` ve el
  * estado y la DEK vigentes.
+ *
+ * El estado se lee AQUI DENTRO (`getLockState` + `activeDek`), nunca antes de `withStorageGate`: leerlo
+ * fuera devuelve la foto de ANTES de la transicion que ya tiene el candado (desactivada: la DEK vieja
+ * cifra despues de que el sobre desapareciera; activada: el estado 'off' deja texto plano con la
+ * proteccion puesta).
  *
  * NO reentrante (ver storageGate.ts): no lo llames desde dentro de `withStorageGate` ni desde `fn`.
  */
@@ -589,17 +633,36 @@ async function enableProtectionLocked(
   const recoveryKek = await deriveRecoveryKek(recoveryRaw, policy.iterations, recSalt);
   const wrappedRecovery = await wrapDek(wrappableDek, recoveryKek, recSalt);
 
-  const envelope: LockEnvelope = { method, wrappedDek, wrappedRecovery, iterations: policy.iterations, gen: newGeneration() };
+  const envelope: LockEnvelope = {
+    method,
+    wrappedDek,
+    wrappedRecovery,
+    iterations: policy.iterations,
+    gen: newGeneration(),
+    transitionNonce: newTransitionNonce(),
+  };
+
+  // La DEK de ESTA pestaña se saca del sobre ANTES de escribir nada: el marcador de activacion va firmado
+  // con ella (y con el nonce del sobre), igual que el de desactivacion.
+  const sessionDek = await unwrapDek(wrappedDek, mainKek, false);
 
   // Marcador ANTES del sobre: si la pestaña muere a mitad de la migracion, al abrir otra vez el estado es
   // 'locked' (hay sobre y no hay DEK) y el primer desbloqueo reanuda desde la ultima fase marcada.
-  await writeLockTransition({ v: 1, phase: 'locking', done: [], startedAt: new Date().toISOString() });
+  //
+  // Va FIRMADO: sin la firma de la DEK, un `{phase:'locking'}` plantado a mano (devtools, perfil
+  // restaurado, copia vieja) obligaba al desbloqueo a "reanudar" y a cifrar con la DEK buena lo que
+  // encontrara en claro, blanqueando texto plano inyectado (identity, filas) como si fuera legitimo.
+  // La DEK sale del PIN que acaba de escribir el usuario, asi que el corte legitimo sigue reanudandose.
+  await writeLockTransition(
+    { v: 1, phase: 'locking', done: [], startedAt: new Date().toISOString(), nonce: envelope.transitionNonce },
+    sessionDek,
+  );
   await writeRaw(ENVELOPE_KEY, envelope);
   // Las otras pestañas tienen la DEK del sobre ANTERIOR (o ninguna): se avisa en cuanto hay sobre nuevo
   // para que la suelten y no escriban con una llave que ya no abre nada.
   publishLockMessage();
 
-  activeDek = await unwrapDek(wrappedDek, mainKek, false);
+  activeDek = sessionDek;
   activeDekGeneration = envelopeGeneration(envelope);
   currentMethod = method;
   // Mientras se cifra lo que ya habia, nadie lee: quedaria texto plano a la vista a mitad de camino.
@@ -639,9 +702,15 @@ export async function unlock(
       }
       const dek = await dekFromEnvelope(envelope, method, secret, prfProvider);
 
-      // Reanuda la migracion que quedo a medias (pestaña cerrada al activar la proteccion).
+      // Reanuda la migracion que quedo a medias (pestaña cerrada al activar la proteccion), pero SOLO si
+      // el marcador lo firmo la DEK de este sobre y pertenece a su transicion vigente. Un marcador sin
+      // firma (o con firma invalida) no autoriza nada: no se cifra lo que este en claro —seria blanquear
+      // texto plano inyectado como `identity.privateJwk`— ni se acepta como dato legitimo (sigue saliendo
+      // `PlaintextDataError`). El marcador invalido se descarta para no volver a mirarlo.
       const pending = await readLockTransition();
-      if (pending?.phase === 'locking') {
+      const resumable = pending ? await markerAuthorizesTransition(pending, dek, envelope) : false;
+      if (pending?.phase === 'locking' && !resumable) await clearLockTransition();
+      if (pending?.phase === 'locking' && resumable) {
         activeDek = dek;
         activeDekGeneration = envelopeGeneration(envelope);
         isLockedState = true;
@@ -653,11 +722,11 @@ export async function unlock(
           }
         });
         await clearLockTransition();
-      } else if (pending?.phase === 'unlocking' && (await verifyLockTransition(pending, dek))) {
-        // La pestaña que desactivaba murio a mitad. El marcador esta firmado por esta DEK: se TERMINA la
-        // desactivacion (el usuario ya lo habia pedido) en vez de dejar el equipo a medias. Un marcador
-        // que no se puede autenticar no se toca (ver `disableProtectionLocked`): no se reanuda ni se
-        // acepta texto plano por el.
+      } else if (pending?.phase === 'unlocking' && resumable) {
+        // La pestaña que desactivaba murio a mitad. El marcador esta firmado por esta DEK y pertenece a la
+        // transicion vigente del sobre: se TERMINA la desactivacion (el usuario ya lo habia pedido) en vez
+        // de dejar el equipo a medias. Un marcador que no se puede autenticar o que es de un intento
+        // anterior no se toca (ver `completeDisable`): no se reanuda ni se acepta texto plano por el.
         try {
           await completeDisable(dek);
           await clearFailures();
@@ -751,8 +820,20 @@ export async function disableProtection(): Promise<void> {
 }
 
 /** Marcador de desactivacion sin fases hechas (el estado inicial honesto de un reintento). */
-function freshUnlockingMarker(): Parameters<typeof writeLockTransition>[0] {
-  return { v: 1, phase: 'unlocking', done: [], startedAt: new Date().toISOString() };
+function freshUnlockingMarker(nonce: string): Parameters<typeof writeLockTransition>[0] {
+  return { v: 1, phase: 'unlocking', done: [], startedAt: new Date().toISOString(), nonce };
+}
+
+/**
+ * Arranca un intento de desactivacion NUEVO: rota el nonce del sobre y escribe el marcador sin fases hechas
+ * firmado con la DEK. El nonce del sobre va dentro del marcador (y de lo que se firma), asi que un marcador
+ * capturado de un intento anterior deja de autorizar nada en cuanto el sobre rota (ver
+ * `markerAuthorizesTransition`).
+ */
+async function writeFreshUnlockingMarker(dek: CryptoKey, envelope: LockEnvelope): Promise<void> {
+  const nonce = newTransitionNonce();
+  await writeRaw(ENVELOPE_KEY, { ...envelope, transitionNonce: nonce });
+  await writeLockTransition(freshUnlockingMarker(nonce), dek);
 }
 
 /**
@@ -761,14 +842,18 @@ function freshUnlockingMarker(): Parameters<typeof writeLockTransition>[0] {
  */
 async function completeDisable(dek: CryptoKey): Promise<void> {
    await withStorageGate(async () => {
+     const envelope = await readEnvelope();
+     if (!isEnvelope(envelope)) throw new Error('Protección no activada');
      const existing = await readLockTransition();
      const resumable =
-       existing !== null && existing.phase === 'unlocking' && (await verifyLockTransition(existing, dek));
+       existing !== null &&
+       existing.phase === 'unlocking' &&
+       (await markerAuthorizesTransition(existing, dek, envelope));
      if (!resumable) {
-       // El marcador se escribe SIN mirar el que hubiera: uno sin firma valida (plantado, restaurado de una
-       // copia vieja) no puede decidir que fases ya estan hechas. El `done` se rehace desde cero y cada
-       // fase es idempotente.
-       await writeLockTransition(freshUnlockingMarker(), dek);
+       // El marcador se escribe SIN mirar el que hubiera: uno sin firma valida o de una transicion anterior
+       // (plantado, restaurado de una copia vieja, capturado y repetido) no puede decidir que fases ya
+       // estan hechas. El `done` se rehace desde cero, cada fase es idempotente y el nonce del sobre rota.
+       await writeFreshUnlockingMarker(dek, envelope);
      }
      try {
        await runLockTransition('unlocking', dek);
@@ -780,9 +865,10 @@ async function completeDisable(dek: CryptoKey): Promise<void> {
        }
      } catch (err) {
        // El marcador no puede quedarse diciendo que fases que no se completaron ya estan hechas: si no,
-       // cada reintento se las saltaria y el equipo se quedaria sin poder desactivar la proteccion.
+       // cada reintento se las saltaria y el equipo se quedaria sin poder desactivar la proteccion. Ademas
+       // el intento que acaba de fallar agota su autorizacion: el reintento escribe un nonce nuevo.
        try {
-         await writeLockTransition(freshUnlockingMarker(), dek);
+         await writeFreshUnlockingMarker(dek, envelope);
        } catch {
          /* manda el error original */
        }

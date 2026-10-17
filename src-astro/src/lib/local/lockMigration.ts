@@ -64,6 +64,12 @@ export interface LockTransitionRecord {
   /** Fases ya terminadas (reanudable: se saltan al reanudar). */
   done: string[];
   startedAt: string;
+  /**
+   * Transicion del sobre a la que pertenece el marcador (ver `LockEnvelope.transitionNonce`). El sobre rota
+   * su nonce en cada intento NUEVO, asi que un marcador capturado de un intento anterior deja de valer
+   * aunque su MAC siga siendo valido (lo comprueba `deviceLock`).
+   */
+  nonce?: string;
   /** MAC del marcador derivado de la DEK (ver `verifyLockTransition`). */
   mac?: string;
 }
@@ -231,17 +237,26 @@ export async function readLockTransition(): Promise<LockTransitionRecord | null>
 // El marcador se escribe en claro (hace falta antes de tener la DEK), pero NO se cree sin mas: se firma
 // sellando su contenido con la DEK vigente. Asi una pestaña solo reanuda o termina la transicion de
 // OTRA si de verdad tiene la llave del equipo: un marcador plantado no se puede autenticar y se ignora.
+//
+// La firma va ademas atada al nonce de la transicion del sobre (`transitionNonce`, ver deviceLock.ts): el
+// sobre lo rota en cada intento nuevo, de modo que un marcador firmado CAPTURADO de un intento anterior
+// deja de autorizar nada aunque su MAC siga siendo valido.
 // ---------------------------------------------------------------------------
 
 const TRANSITION_MAC_AAD = 'fize-lock-transition-v1';
 
-function transitionPayload(record: Pick<LockTransitionRecord, 'phase' | 'done' | 'startedAt'>): string {
-  return JSON.stringify({ phase: record.phase, done: [...record.done], startedAt: record.startedAt });
+function transitionPayload(
+  record: Pick<LockTransitionRecord, 'phase' | 'done' | 'startedAt'> & { nonce?: string },
+): string {
+  const base = { phase: record.phase, done: [...record.done], startedAt: record.startedAt };
+  // El nonce entra en lo firmado SOLO cuando el marcador lo trae: los marcadores escritos por versiones
+  // previas (sin nonce) siguen verificando y no obligan a una migracion de los que esten en disco.
+  return JSON.stringify(record.nonce === undefined ? base : { ...base, nonce: record.nonce });
 }
 
 /** Firma (sella) el marcador con la DEK. */
 export async function signLockTransition(
-  record: Pick<LockTransitionRecord, 'phase' | 'done' | 'startedAt'>,
+  record: Pick<LockTransitionRecord, 'phase' | 'done' | 'startedAt'> & { nonce?: string },
   dek: CryptoKey,
 ): Promise<string> {
   return sealString(dek, TRANSITION_MAC_AAD, transitionPayload(record));
@@ -258,8 +273,9 @@ export async function verifyLockTransition(record: LockTransitionRecord, dek: Cr
 }
 
 /**
- * Escribe el marcador. Con `dek` queda firmado; sin ella (activacion, antes de tener la DEK) queda sin
- * MAC y solo se puede reanudar hacia la fase `locking`, que es idempotente y no abre ninguna puerta.
+ * Escribe el marcador. Con `dek` queda firmado; sin ella queda sin MAC y NO autoriza nada (ver `unlock`).
+ * Todo el ciclo de vida del sobre escribe marcadores firmados: los dos sitios que podian escribir uno sin
+ * firmar (`enableProtection` y la reanudacion de `locking`) ya tienen la DEK en la mano.
  */
 export async function writeLockTransition(record: LockTransitionRecord, dek?: CryptoKey): Promise<void> {
   const next = dek ? { ...record, mac: await signLockTransition(record, dek) } : record;
