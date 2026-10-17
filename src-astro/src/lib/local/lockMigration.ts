@@ -283,8 +283,17 @@ export async function writeLockTransition(record: LockTransitionRecord, dek?: Cr
   await (await kvDb()).put(KV_STORE, next, LOCK_TRANSITION_KEY);
 }
 
-export async function clearLockTransition(): Promise<void> {
+/**
+ * Suelta la bandera en memoria de "ESTA pestaña tiene una transicion a medias" sin tocar el disco. Lo usa
+ * quien cierra la transicion en SU PROPIA transaccion de `fize-local` (marcador + rotacion del nonce del
+ * sobre), para que las dos escrituras sean atomicas y la bandera quede igual de suelta.
+ */
+export function endLocalTransition(): void {
   localTransitionPhase = null;
+}
+
+export async function clearLockTransition(): Promise<void> {
+  endLocalTransition();
   await (await kvDb()).delete(KV_STORE, LOCK_TRANSITION_KEY);
 }
 

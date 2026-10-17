@@ -17,8 +17,10 @@ import {
 } from './rowCrypto';
 import {
   clearLockTransition,
+  endLocalTransition,
   findPlaintextLeftovers,
   findEncryptedLeftovers,
+  LOCK_TRANSITION_KEY,
   readLockTransition,
   runLockTransition,
   verifyLockTransition,
@@ -676,7 +678,9 @@ async function enableProtectionLocked(
     }
   });
 
-  await clearLockTransition();
+  // El nonce del sobre rota AHORA (y el marcador se borra en la misma transaccion): asi el marcador que un
+  // atacante haya podido copiar durante la activacion deja de autorizar la transicion vigente.
+  await finishLockingTransition(envelope);
   isLockedState = false;
   return recoveryCodeStr;
 }
@@ -721,7 +725,9 @@ export async function unlock(
             throw new Error(`No se pudo cifrar todo lo que ya había (${missing.join(', ')}).`);
           }
         });
-        await clearLockTransition();
+        // Reanudacion terminada: rota el nonce del sobre y borra el marcador juntos, para que la copia que
+        // el atacante guardo cuando el corte no vuelva a autorizar nada (ver `finishLockingTransition`).
+        await finishLockingTransition(envelope);
       } else if (pending?.phase === 'unlocking' && resumable) {
         // La pestaña que desactivaba murio a mitad. El marcador esta firmado por esta DEK y pertenece a la
         // transicion vigente del sobre: se TERMINA la desactivacion (el usuario ya lo habia pedido) en vez
@@ -834,6 +840,43 @@ async function writeFreshUnlockingMarker(dek: CryptoKey, envelope: LockEnvelope)
   const nonce = newTransitionNonce();
   await writeRaw(ENVELOPE_KEY, { ...envelope, transitionNonce: nonce });
   await writeLockTransition(freshUnlockingMarker(nonce), dek);
+}
+
+/**
+ * Cierra la transicion `locking` que acaba de completar: ROTA el nonce de transicion del sobre y borra el
+ * marcador en la MISMA transaccion de `fize-local`.
+ *
+ * Por que rotar: el nonce se quedaba quieto hasta la siguiente desactivacion, asi que un marcador `locking`
+ * firmado CAPTURADO a mitad de la activacion seguia perteneciendo a la transicion vigente del sobre. Con el
+ * equipo bloqueado, plantar esa copia y desbloquear hacia que el desbloqueo "reanudase" la activacion y
+ * cifrase con la DEK buena texto plano inyectado (`identity.privateJwk`, filas) hasta blanquearlo como dato
+ * legitimo; si el `done` capturado se saltaba la fase `local`, el desbloqueo ademas fallaba en CADA intento
+ * (resto en claro que nadie vuelve a mirar) y el equipo quedaba sin poder desbloquearse ni con el codigo.
+ *
+ * Por que en UNA transaccion: si el proceso muere entre la rotacion y el borrado, el marcador que quede ya
+ * no pertenece a la transicion vigente —se descarta sin reanudar en el proximo desbloqueo— y los datos ya
+ * estan cifrados (este cierre solo corre despues de comprobar que no queda texto plano), asi que el equipo
+ * siempre queda con una salida legitima. Al reves —borrar sin rotar— es justo el agujero: el marcador
+ * capturado vuelve a autorizar. Si la transaccion no llega a confirmar, no cambia nada: el marcador sigue
+ * vigente y la activacion se reanuda como si el corte hubiera sido antes.
+ */
+async function finishLockingTransition(envelope: LockEnvelope): Promise<void> {
+  const database = await kvDb();
+  const tx = database.transaction(KV_STORE, 'readwrite');
+  const done = tx.done;
+  done.catch(() => {
+    /* el error se propaga por el await de `done` */
+  });
+  const store = tx.objectStore(KV_STORE);
+  const current = (await store.get(ENVELOPE_KEY)) as unknown;
+  // Si otra pestaña ya cambio el sobre, su nonce no es asunto de esta transicion: solo se rota el de la
+  // generacion que acaba de terminar (el marcador, que si es nuestro, se borra igual).
+  if (isEnvelope(current) && envelopeGeneration(current) === envelopeGeneration(envelope)) {
+    await store.put({ ...current, transitionNonce: newTransitionNonce() }, ENVELOPE_KEY);
+  }
+  await store.delete(LOCK_TRANSITION_KEY);
+  await done;
+  endLocalTransition();
 }
 
 /**
