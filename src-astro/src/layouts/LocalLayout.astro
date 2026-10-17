@@ -7,7 +7,9 @@
 import { Toaster } from "@swal/ui";
 import { AppShell } from "@swal/ui";
 import { themeBootScript } from "@swal/ui/theme-boot";
-import { NET_BANNER_SCRIPT } from "../lib/inlineScripts";
+import { NET_BANNER_SCRIPT, PEDIDOS_FILTER_SCRIPT } from "../lib/inlineScripts";
+import LockGate from "../components/local/LockGate.svelte";
+
 
 interface Props {
   title: string;
@@ -63,8 +65,21 @@ const NAV = [
     </p>
     <script is:inline set:html={NET_BANNER_SCRIPT}></script>
     <AppShell items={NAV} {currentPath} menuLabel="Menú" navLabel="Fize en este equipo" style="background: transparent" client:load>
+      <LockGate client:load>
       <slot />
+    </LockGate>
     </AppShell>
+    <!--
+      /local/pedidos: el chip activo del filtro lo marca el cliente (la pagina es prerenderizada).
+      Va FUERA del LockGate a proposito: lo que entra en el slot de una isla hidratada viaja dentro de
+      una plantilla de hidratacion hasta que la isla monta, y el bloque de codigo que hay ahi dentro
+      nunca se ejecuta. Dentro del slot el script era letra muerta (los dos E2E del filtro fallaban).
+      OJO: este comentario no puede escribir la etiqueta del script entre angulos. El paso de CSP
+      (scripts/gen-csp-headers.mjs) saca los hashes de los scripts inline con una expresion regular
+      sobre el HTML y una etiqueta suelta aqui dentro se traga el hash del script de verdad: el
+      navegador lo bloquea en silencio.
+    -->
+    {currentPath.startsWith("/local/pedidos") && <script is:inline set:html={PEDIDOS_FILTER_SCRIPT} />}
     <Toaster client:load position="bottom-right" />
   </body>
 </html>

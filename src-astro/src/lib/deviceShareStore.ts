@@ -1,8 +1,15 @@
 // deviceShareStore.ts — almacen LOCAL de los shares E2EE (x=1 dispositivo, x=2 recuperacion).
 // Estos shares NUNCA salen del dispositivo (la nube solo tiene x=3) y NUNCA se registran en logs.
 // Persistente en IndexedDB (browser). El almacen en memoria existe solo para tests.
+//
+// Con la proteccion de dispositivo activa los shares se guardan cifrados (rowCrypto.encryptValue), porque
+// son material criptografico del local: la migracion de `enableProtection` los recorre igual que las filas
+// del dominio (ver lockMigration.ts, fase `shares`).
 
-import { openDB, type IDBPDatabase } from 'idb';
+import { getActiveDek, getLockState, LockedError, withLockedWrite } from './local/deviceLock';
+import { deviceShareValueKey, isTransitionPending } from './local/lockMigration';
+import { SHARES_STORE, sharesDb, resetLocalStoresForTests } from './local/localStores';
+import { decryptValue, encryptValue, isEncryptedBlob, PlaintextDataError } from './local/rowCrypto';
 
 export interface DeviceShares {
   device: any;
@@ -14,40 +21,45 @@ export interface DeviceShareStore {
   load(id: string): DeviceShares | null | Promise<DeviceShares | null>;
 }
 
-const DB_NAME = 'fize-device-shares';
-const DB_VERSION = 1;
-const STORE = 'shares';
-
-let dbPromise: Promise<IDBPDatabase> | null = null;
-
 export function resetDeviceShareDbForTests(): void {
-  dbPromise = null;
+  resetLocalStoresForTests();
 }
 
-async function db(): Promise<IDBPDatabase> {
-  if (typeof indexedDB === 'undefined') {
-    throw new Error('IndexedDB unavailable: device shares cannot be persisted');
-  }
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(database) {
-        if (!database.objectStoreNames.contains(STORE)) database.createObjectStore(STORE);
-      },
-    });
-  }
-  return dbPromise;
+function requireDek(): CryptoKey {
+  const dek = getActiveDek();
+  if (!dek) throw new LockedError();
+  return dek;
 }
 
 /** Almacen persistente (IndexedDB). Sobrevive a recargas. Los errores se propagan (sin log del contenido). */
 export function createIdbDeviceShareStore(): DeviceShareStore {
   return {
     async save(id, s) {
-      const database = await db();
-      await database.put(STORE, { device: s.device, recovery: s.recovery }, id);
+      // El cifrado va DENTRO del candado (con el estado releido): un share con `{__enc}` guardado despues
+      // de borrar el sobre es material criptografico perdido y nadie lo puede abrir.
+      await withLockedWrite(async (ctx) => {
+        const stored: unknown =
+          ctx.state === 'unlocked' ? await encryptValue(deviceShareValueKey(id), s, ctx.dek) : s;
+        const database = await sharesDb();
+        await database.put(SHARES_STORE, stored, id);
+      });
     },
     async load(id) {
-      const database = await db();
-      return ((await database.get(STORE, id)) as DeviceShares | undefined) ?? null;
+      const state = await getLockState();
+      if (state === 'locked') throw new LockedError();
+      const database = await sharesDb();
+      const stored = (await database.get(SHARES_STORE, id)) as unknown;
+      if (stored === undefined || stored === null) return null;
+      if (state === 'off') {
+        // Sin proteccion los shares estan en claro; con sobre (proteccion desactivada sin descifrar) no se
+        // devuelve basura como si fuera un share.
+        if (isEncryptedBlob(stored)) throw new Error(`Los shares de "${id}" siguen cifrados.`);
+        return stored as DeviceShares;
+      }
+      if (isEncryptedBlob(stored)) return decryptValue<DeviceShares>(deviceShareValueKey(id), stored, requireDek());
+      // Con la proteccion activa un share sin sobre es material inyectado... salvo a mitad de desactivar.
+      if (isTransitionPending()) return stored as DeviceShares;
+      throw new PlaintextDataError(`los shares de "${id}"`);
     },
   };
 }
