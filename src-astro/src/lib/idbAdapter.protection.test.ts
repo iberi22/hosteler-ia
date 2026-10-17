@@ -103,6 +103,20 @@ describe('lecturas con la proteccion activa', () => {
     await expect(new IndexedDBAdapter().get('restaurant', 'plain1', instance)).rejects.toBeInstanceOf(PlaintextDataError);
     await disableProtection();
   });
+
+  it('con la proteccion DESACTIVADA rechaza la fila que sigue cifrada (no la devuelve como dato)', async () => {
+    const instance = 'local-orphan';
+    // Sobre huerfano: se borro la llave sin descifrar la fila (desactivacion a medias, copia restaurada).
+    await (await entityDb()).put('restaurant', record('r1', instance, { __enc: 'v1.aaaa.bbbb.cccc' }));
+    await (await entityDb()).put('restaurant', record('r2', instance, { name: 'En claro' }));
+
+    const adapter = new IndexedDBAdapter();
+    await expect(adapter.get('restaurant', 'r1', instance)).rejects.toThrow(/siguen cifrados/);
+    // La lista tampoco la cuela entre las filas legitimas (antes devolvia el sobre como si fuera negocio).
+    await expect(adapter.list('restaurant', instance)).rejects.toThrow(/siguen cifrados/);
+    // Y la fila en claro de verdad si se lee.
+    expect((await adapter.get('restaurant', 'r2', instance))?.name).toBe('En claro');
+  });
 });
 
 describe('outbox y shares con la proteccion activa', () => {

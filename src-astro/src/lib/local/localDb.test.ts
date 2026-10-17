@@ -90,5 +90,8 @@ describe('localDb: con la proteccion activa', () => {
   it('un valor cifrado sin sobre NO se devuelve como si fuera dato', async () => {
     await (await kvDb()).put(KV_STORE, { __enc: 'v1.aaaa.bbbb' }, 'recoveryCode');
     await expect(getLocal('recoveryCode')).rejects.toThrow(/siguen cifrados/);
+    // Y el mensaje no engaña: reactivar el bloqueo usa una DEK NUEVA, no recupera lo que cifro la vieja.
+    await expect(getLocal('recoveryCode')).rejects.toThrow(/llave nueva/);
+    await expect(getLocal('recoveryCode')).rejects.toThrow(/copia de seguridad/);
   });
 });
