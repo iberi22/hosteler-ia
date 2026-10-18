@@ -4,6 +4,7 @@ import LocalLayout from "../../layouts/LocalLayout.astro";
 import InventoryStats from "../../components/inventory/InventoryStats.svelte";
 import StockAlerts from "../../components/inventory/StockAlerts.svelte";
 import InventoryManager from "../../components/inventory/InventoryManager.svelte";
+import RecommendationContainer from "../../components/ai/RecommendationContainer.svelte";
 ---
 
 <LocalLayout title="Inventario — Fi'ze Dashboard (Local)">
@@ -23,6 +24,7 @@ import InventoryManager from "../../components/inventory/InventoryManager.svelte
     <div class="inventory-grid">
       <div class="grid-main">
         <StockAlerts client:only="svelte" />
+        <RecommendationContainer client:only="svelte" />
       </div>
     </div>
 

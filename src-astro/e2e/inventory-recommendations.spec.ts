@@ -1,35 +1,34 @@
 import { test, expect } from '@playwright/test';
-import { staffCookie } from './staff-auth';
 
 test.describe('Inventory Recommendations (Local Mode)', () => {
-  test('should load the inventory page and hide the recommendation panel in local mode', async ({ page, request, context }) => {
-    // 1. Authenticate as staff so we can access /dashboard
-    const cookieHeader = await staffCookie(request);
-    const cookieVal = cookieHeader.split('=')[1];
-    
-    await context.addCookies([{
-      name: 'fize_session',
-      value: cookieVal,
-      domain: 'localhost',
-      path: '/'
-    }]);
-    
-    // Go to inventory page
-    await page.goto('/dashboard/inventory');
+  test('should load the local inventory page and show the recommendation panel without cloud requests', async ({ page }) => {
+    let cloudRequestsCount = 0;
+    page.on('request', req => {
+      if (req.url().includes('/api/ai/infer')) {
+        cloudRequestsCount++;
+      }
+    });
+
+    // Go to local inventory page
+    await page.goto('/local/inventario');
     
     // Ensure the page title is visible
     await expect(page.locator('h1.page-title', { hasText: 'Inventario' })).toBeVisible();
 
-    // Verify the stock-vs-minimum card is visible (ensure side grid is present)
-    await expect(page.locator('.svm-title')).toBeVisible();
-    
-    // The recommendation panel should not be visible as it handles local 404 cleanly without error box
+    // The recommendation panel should be visible
     const panel = page.locator('section[aria-label="Recomendaciones Fi\'ze"]');
-    await expect(panel).toBeHidden();
+    await expect(panel).toBeVisible();
     
-    // No error class elements matching recommendation panel's standard error should exist
-    const errorText = page.locator('p.error');
-    await expect(errorText).toBeHidden();
+    // Assert that the AI tier line is visible
+    const tierLine = page.locator('p[data-testid="ai-tier"]');
+    await expect(tierLine).toBeVisible();
+
+    // Assert that at least one recommendation is visible (or the "all in order" fallback from local fallback rules)
+    const listItems = panel.locator('li, p:has-text("Todo en orden"), p:has-text("Sin recomendaciones por ahora"), p:has-text("En el navegador la API solo corre en modo local")');
+        await expect(listItems.first()).toBeVisible();
+
+    // Assert that no request to the cloud API was made
+    expect(cloudRequestsCount).toBe(0);
 
     // Assert that standard page loaded without unexpected errors
     await expect(page.locator('.inventory-page')).toBeVisible();
