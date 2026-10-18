@@ -384,20 +384,39 @@ export async function openInventorySnapshot(
 
   const { key, hmacKey } = await deriveKeys(passphrase, salt, e.kdf.iterations);
 
-  const checkPayload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${e.salt}|${e.iv}`);
-  const checkSig = await crypto.subtle.sign('HMAC', hmacKey, checkPayload);
-  const expectedCheckBin = new Uint8Array(checkSig);
+  const checkPayloadFize = new TextEncoder().encode(`swal-inventory-export-enc/v1|${e.salt}|${e.iv}`);
+  const checkPayloadGara = new TextEncoder().encode(`swal-inventory-export-enc/v1|${e.salt}`);
+
+  const checkSigFize = await crypto.subtle.sign('HMAC', hmacKey, checkPayloadFize);
+  const checkSigGara = await crypto.subtle.sign('HMAC', hmacKey, checkPayloadGara);
+
+  const expectedCheckFizeBin = new Uint8Array(checkSigFize);
+  const expectedCheckGaraBin = new Uint8Array(checkSigGara);
 
   let checkMatch = false;
   try {
     const actualCheckBin = fromB64(e.check as string);
-    if (actualCheckBin.length === expectedCheckBin.length) {
+
+    let matchFize = false;
+    if (actualCheckBin.length === expectedCheckFizeBin.length) {
       let mismatch = 0;
       for (let i = 0; i < actualCheckBin.length; i++) {
-        mismatch |= actualCheckBin[i] ^ expectedCheckBin[i];
+        mismatch |= actualCheckBin[i] ^ expectedCheckFizeBin[i];
       }
-      checkMatch = mismatch === 0;
+      matchFize = mismatch === 0;
     }
+
+    let matchGara = false;
+    if (actualCheckBin.length === expectedCheckGaraBin.length) {
+      let mismatch = 0;
+      for (let i = 0; i < actualCheckBin.length; i++) {
+        mismatch |= actualCheckBin[i] ^ expectedCheckGaraBin[i];
+      }
+      matchGara = mismatch === 0;
+    }
+
+    // Evaluate both to avoid short-circuiting and timing leaks
+    checkMatch = matchFize || matchGara;
   } catch {
     throw new InventoryExportError('formato');
   }
