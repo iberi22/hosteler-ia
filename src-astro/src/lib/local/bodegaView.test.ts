@@ -68,5 +68,9 @@ describe('bodegaView helpers', () => {
     it('handles negative diffs as 0', () => {
       expect(ageInDays('2026-10-17T12:00:00.000Z')).toBe(0);
     });
+
+    it('rounds correctly for partial days (e.g. 1.6 days -> 2 days)', () => {
+      expect(ageInDays('2026-10-14T21:36:00.000Z')).toBe(2);
+    });
   });
 });

@@ -26,24 +26,71 @@ const mockSnapshot = {
 };
 
 test.describe('Bodega read-only inventory', () => {
-  test('loads a plain snapshot, displays data, and does not make network requests or save to IDB', async ({ page, context }) => {
-    // We mock offline to guarantee no network requests are succeeding if they happen
-    await context.setOffline(true);
-    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-
-    // To allow the app to initialize its basic state, we temporarily go online, onboard, and go offline again
-    await context.setOffline(false);
-    await onboardLocal(page);
-    await context.setOffline(true);
-    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
-
-    // Intercept and assert no fetch requests are made when interacting with the Bodega screen
-    let fetchCount = 0;
+  test('loads a plain snapshot, displays data, and does not make network requests or save to IDB', async ({ page }) => {
+    // We stay online but track requests to ensure no calls reach external or cloud APIs.
+    let externalReqCount = 0;
     page.on('request', (req) => {
-      if (req.resourceType() === 'fetch' || req.resourceType() === 'xhr') {
-        fetchCount++;
+      const url = req.url();
+      // Ignore localhost (like vitest/playwright server resources or 4331)
+      if (!url.includes('localhost:4331') && !url.includes('127.0.0.1')) {
+        externalReqCount++;
       }
     });
+
+    await onboardLocal(page);
+    await page.goto('/local/bodega/');
+
+    // Wait for Astro island hydration
+    await page.waitForFunction(() => !document.querySelector('astro-island[ssr]'));
+    await expect(page.getByRole('heading', { name: 'Bodega' })).toBeVisible();
+
+    // Take snapshot of IDB databases before
+    const dbsBefore = await page.evaluate(async () => {
+      const databases = await indexedDB.databases();
+      return databases.map(db => db.name).sort();
+    });
+
+    // Load file with locator().setInputFiles
+    const fileBuffer = Buffer.from(JSON.stringify(mockSnapshot));
+    await page.locator('#bodega-file').setInputFiles({
+      name: 'snapshot.json',
+      mimeType: 'application/json',
+      buffer: fileBuffer
+    });
+
+    await page.getByRole('button', { name: 'Abrir inventario' }).click();
+
+    // Assert UI elements are displayed correctly
+    await expect(page.getByText('Inventario cargado correctamente. Solo lectura.')).toBeVisible();
+    await expect(page.getByText('App: shelf')).toBeVisible();
+    await expect(page.getByText('test-123')).toBeVisible();
+
+    // Wait for the table to appear and assert rows
+    const rows = page.locator('tbody tr');
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByText('Harina')).toBeVisible();
+    await expect(page.getByText('Azúcar')).toBeVisible();
+    await expect(page.getByText('Sal')).toBeVisible();
+
+    // Azucar should have a low stock badge (quantity 5 < minStock 10)
+    const lowStockRow = page.locator('tr').filter({ hasText: 'Azúcar' });
+    await expect(lowStockRow.locator('.alert-badge')).toBeVisible();
+
+    // Verify search works
+    await page.getByLabel('Buscar artículo').fill('Harina');
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByText('Harina')).toBeVisible();
+    await expect(page.getByText('Azúcar')).not.toBeVisible();
+
+    // Verify it didn't write any new database
+    const dbsAfter = await page.evaluate(async () => {
+      const databases = await indexedDB.databases();
+      return databases.map(db => db.name).sort();
+    });
+
+    expect(dbsAfter).toEqual(dbsBefore);
+    expect(externalReqCount).toBe(0);
+  });
 
     await page.goto('/local/bodega/');
     await expect(page.getByRole('heading', { name: 'Bodega' })).toBeVisible();

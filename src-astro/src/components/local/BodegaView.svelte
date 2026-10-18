@@ -5,9 +5,13 @@
     buildInventorySnapshot,
     sealInventorySnapshot,
     InventoryExportError,
+  inventoryExportFilename,
     type PlainInventorySnapshot,
   } from '../../lib/inventoryExport';
   import { filterRows, isLowStock, ageInDays } from '../../lib/local/bodegaView';
+  import { getIdbAdapter } from '../../lib/idbAdapter';
+  import { loadIdentity } from '../../lib/local/identity';
+  import { LockedError } from '../../lib/local/deviceLock';
 
   // State for importing
   let fileInput = $state<HTMLInputElement>();
@@ -38,31 +42,6 @@
     snapshot = null;
     importPassphrase = '';
     isEncrypted = false;
-
-    if (file) {
-      if (file.name.endsWith('.json')) {
-        isEncrypted = false; // Plain files usually don't need a passphrase.
-      } else {
-        isEncrypted = true; // Assuming non-json (like .fize or custom ext) might be encrypted,
-        // we'll actually let the parser fail with 'clave' if it is encrypted and no pass is given.
-        // But for UI, let's just show it if they check a box or if the first parse fails.
-      }
-
-      // Let's eagerly check if it's a known format, if possible.
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-         try {
-           const text = e.target?.result as string;
-           const peek = JSON.parse(text);
-           if (peek.format === 'swal-inventory-export-enc/v1') {
-             isEncrypted = true;
-           }
-         } catch {
-           // ignore, maybe not JSON
-         }
-      };
-      reader.readAsText(file);
-    }
   }
 
   function errorText(err: unknown): string {
@@ -72,22 +51,39 @@
       if (err.kind === 'alterado') return 'El archivo está dañado o fue alterado.';
       return err.message;
     }
-    return (err as Error).message || 'Error desconocido';
+    return 'Error desconocido al abrir el archivo.';
   }
 
   async function loadFile(e: Event) {
     e.preventDefault();
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      importMsg = { ok: false, text: 'El archivo es demasiado grande (más de 5 MB).' };
+      return;
+    }
+
     importing = true;
     importMsg = null;
 
     try {
       const text = await file.text();
+      // Only do a peek if we don't already know if it's encrypted from the passphrase prompt
+      if (!isEncrypted) {
+        try {
+          const peek = JSON.parse(text);
+          if (peek.format === 'swal-inventory-export-enc/v1') {
+            isEncrypted = true;
+            importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' };
+            importing = false;
+            return;
+          }
+        } catch { /* not json or not envelope */ }
+      }
+
       snapshot = await openInventorySnapshot(text, isEncrypted ? importPassphrase : undefined);
       importMsg = { ok: true, text: 'Inventario cargado correctamente. Solo lectura.' };
     } catch (err) {
       if (err instanceof InventoryExportError && err.kind === 'clave' && !isEncrypted) {
-        // Eagerly fallback to ask for passphrase
         isEncrypted = true;
         importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' };
       } else {
@@ -99,10 +95,7 @@
     }
   }
 
-  function inventoryExportFilename(plain: boolean) {
-    const now = new Date();
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  ${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
     return `fize-inventario-${ymd}.${plain ? 'json' : 'fize'}`;
   }
 
@@ -124,16 +117,17 @@
     exportMsg = null;
 
     try {
-      const currentInstanceId = 'local-instance'; // It uses the real instance id via getIdbAdapter inside buildInventorySnapshot? Actually, we must use buildInventorySnapshot from F4-1, which does exactly this. Wait, the problem says "asks for a passphrase ... calls buildInventorySnapshot".
-
-      const rawSnap = await buildInventorySnapshot();
+      const identity = await loadIdentity();
+      if (!identity) throw new Error('No hay local en este equipo.');
+      const storage = await getIdbAdapter();
+      const rawSnap = await buildInventorySnapshot(storage, identity.instanceId);
       if (exportPlain) {
         const text = JSON.stringify(rawSnap, null, 2);
-        downloadFile(text, inventoryExportFilename(true), 'application/json');
+        downloadFile(text, inventoryExportFilename(identity.instanceId), 'application/json');
       } else {
         const encSnap = await sealInventorySnapshot(rawSnap, exportPassphrase1);
         const text = JSON.stringify(encSnap);
-        downloadFile(text, inventoryExportFilename(false), 'application/octet-stream');
+        downloadFile(text, inventoryExportFilename(identity.instanceId), 'application/octet-stream');
       }
 
       exportMsg = { ok: true, text: 'Inventario exportado correctamente.' };
@@ -141,7 +135,15 @@
       exportPassphrase2 = '';
       exportPlain = false;
     } catch (err) {
-      exportMsg = { ok: false, text: (err as Error).message || 'Error al exportar.' };
+      if (err instanceof LockedError) {
+        exportMsg = { ok: false, text: 'Tu local está bloqueado. Desbloquéalo primero.' };
+      } else {
+        exportMsg = { ok: false, text: 'Error al exportar el inventario. Inténtalo de nuevo.' };
+      }
+    } finally {
+      exporting = false;
+    }
+  };
     } finally {
       exporting = false;
     }
@@ -164,7 +166,7 @@
     <form class="form" onsubmit={loadFile}>
       <div class="l-field">
         <label for="bodega-file">Archivo de inventario</label>
-        <input id="bodega-file" bind:this={fileInput} class="l-input" type="file" accept=".json,.fize,application/json,application/octet-stream" onchange={onFile} />
+        <input id="bodega-file" bind:this={fileInput} class="l-input" type="file" accept=".json,application/json,application/octet-stream" onchange={onFile} />
       </div>
       {#if isEncrypted}
         <div class="l-field">
@@ -194,8 +196,12 @@
 
       <div class="badge-row">
         <span class="l-badge">App: {snapshot.source.appId}</span>
-        <span class="l-badge">Instancia: {snapshot.source.instanceId.slice(0,8)}...</span>
-        <span class="l-badge">Fecha: {new Date(snapshot.source.exportedAt).toLocaleDateString('es-CO')} ({age} días)</span>
+        <span class="l-badge" title={snapshot.source.instanceId}>Instancia: {snapshot.source.instanceId.length > 12 ? snapshot.source.instanceId.slice(0, 12) + '...' : snapshot.source.instanceId}</span>
+        <span class="l-badge {age > 7 ? 'l-alert-warn' : ''}">
+          Fecha: {new Date(snapshot.source.exportedAt).toLocaleDateString('es-CO')}
+          ({age} {age === 1 ? 'día' : 'días'})
+          {#if age > 7}— <strong>Atención: los datos son antiguos</strong>{/if}
+        </span>
       </div>
 
       <div class="l-field">
@@ -204,7 +210,8 @@
       </div>
 
       <div class="table-wrap">
-        <table class="data-table">
+        <table class="data-table" aria-live="polite">
+          <caption class="sr-only">Inventario cargado</caption>
           <thead>
             <tr>
               <th>Artículo</th>
@@ -305,3 +312,5 @@
   .low-stock td { background: var(--swal-danger-muted, rgba(220, 38, 38, 0.1)); }
   .alert-badge { background: var(--swal-danger); color: white; border: none; margin-left: 0.5rem; font-size: 0.65rem; }
 </style>
+
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }

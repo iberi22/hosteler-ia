@@ -17,5 +17,5 @@ export function ageInDays(exportedAt: string) {
   const exported = new Date(exportedAt).getTime();
   const now = Date.now();
   const diffMs = Math.max(0, now - exported);
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
