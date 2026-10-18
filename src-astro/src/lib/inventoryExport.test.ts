@@ -524,4 +524,88 @@ describe('Inventory Export', () => {
     const filename = inventoryExportFilename('cualquiera', d);
     expect(filename).toBe('fize-inventario-2026-10-02.swal-inventory.json');
   });
+
+  describe('Interoperabilidad de checks HMAC (Fize vs GARA-G)', () => {
+    async function deriveHmacKey(passphrase: string, saltB64: string, iterations: number) {
+      const enc = new TextEncoder().encode(passphrase);
+      const base = await crypto.subtle.importKey('raw', enc, 'PBKDF2', false, ['deriveBits']);
+      const saltBin = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+      const bitsBuf = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: saltBin, iterations }, base, 512);
+      const hmacBin = new Uint8Array(bitsBuf).subarray(32, 64);
+      return crypto.subtle.importKey('raw', hmacBin, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    }
+
+    async function buildGaraCheck(enc: EncryptedInventorySnapshot, passphrase: string) {
+      const hmacKey = await deriveHmacKey(passphrase, enc.salt, enc.kdf.iterations);
+      const payload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${enc.salt}`);
+      const sig = await crypto.subtle.sign('HMAC', hmacKey, payload);
+      return btoa(String.fromCharCode(...new Uint8Array(sig)));
+    }
+
+    async function buildFizeCheck(enc: EncryptedInventorySnapshot, passphrase: string) {
+      const hmacKey = await deriveHmacKey(passphrase, enc.salt, enc.kdf.iterations);
+      const payload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${enc.salt}|${enc.iv}`);
+      const sig = await crypto.subtle.sign('HMAC', hmacKey, payload);
+      return btoa(String.fromCharCode(...new Uint8Array(sig)));
+    }
+
+    it('(a) Un sobre estilo GARA (check sobre fmt|salt) abre correctamente con la passphrase correcta', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+      const garaEnc = { ...enc, check: garaCheck };
+
+      const opened = await openInventorySnapshot(garaEnc, 'secreta');
+      expect(opened.items).toHaveLength(snap.items.length);
+    });
+
+    it('(b) Un sobre estilo GARA con passphrase incorrecta da "clave"', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+      const garaEnc = { ...enc, check: garaCheck };
+
+      const err = await catchError(openInventorySnapshot(garaEnc, 'mala'));
+      expect(err).toBeInstanceOf(InventoryExportError);
+      expect(err.kind).toBe('clave');
+    });
+
+    it('(c) Un sobre estilo GARA con ciphertext alterado y passphrase correcta da "alterado"', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+
+      const bin = atob(enc.ciphertext);
+      const modifiedBin = String.fromCharCode(bin.charCodeAt(0) ^ 1) + bin.substring(1);
+      const tamperedEnc = { ...enc, check: garaCheck, ciphertext: btoa(modifiedBin) };
+
+      const err = await catchError(openInventorySnapshot(tamperedEnc, 'secreta'));
+      expect(err).toBeInstanceOf(InventoryExportError);
+      expect(err.kind).toBe('alterado');
+    });
+
+    it('(d) Un sobre sellado en Fize (check sobre fmt|salt|iv) todavía abre', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const opened = await openInventorySnapshot(enc, 'secreta');
+      expect(opened.items).toHaveLength(snap.items.length);
+    });
+
+    it('(e) sealInventorySnapshot todavía emite la forma fmt|salt|iv (Fize)', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const expectedFizeCheck = await buildFizeCheck(enc, 'secreta');
+      expect(enc.check).toBe(expectedFizeCheck);
+    });
+  });
 });
