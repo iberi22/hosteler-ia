@@ -115,8 +115,8 @@
       return;
     }
 
-    // Check for existing recipe with the same name on the same dish
-    const exists = existingRecipes.some(r => r.menuItemId === item.menuItemId && r.name === item.draft.title);
+    // Check for existing recipe with the same name on the same dish (case-insensitive)
+    const exists = existingRecipes.some(r => r.menuItemId === item.menuItemId && r.name.toLowerCase() === item.draft.title.toLowerCase());
     if (exists) {
       item.status = 'skipped';
       item.errorMsg = 'Ya existe en este plato (omitida)';

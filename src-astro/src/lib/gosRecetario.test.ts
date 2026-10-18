@@ -111,6 +111,14 @@ describe('gosRecetario', () => {
       const match = matchIngredient('Tomate', inventory);
       expect(match).toBeNull();
     });
+
+    it('rejects reverse fuzzy matches (e.g. Tomate picado vs Tomate)', () => {
+      const inventory = [
+        { id: '1', name: 'Tomate', unit: 'kg', unitCost: 1000 }
+      ];
+      const match = matchIngredient('Tomate picado', inventory);
+      expect(match).toBeNull();
+    });
   });
 
   describe('gosRecipeToFizeLines', () => {
@@ -133,6 +141,24 @@ describe('gosRecetario', () => {
       expect(res.lines[0].unit).toBe('kg');
       expect(res.unmatched).toEqual(['Sal']);
     });
+
+    it('handles missing unitCost or NaN by falling back to 0', () => {
+      const recipe = {
+        title: 'Sopa',
+        main_ingredients: ['Agua', 'Hueso'],
+        instructions: []
+      };
+
+      const inventory = [
+        { id: 'inv_1', name: 'Agua', unit: 'L', unitCost: NaN },
+        { id: 'inv_2', name: 'Hueso', unit: 'kg', unitCost: undefined as any } // Missing unitCost
+      ];
+
+      const res = gosRecipeToFizeLines(recipe, inventory);
+      expect(res.lines).toHaveLength(2);
+      expect(res.lines[0].unitCost).toBe(0);
+      expect(res.lines[1].unitCost).toBe(0);
+    });
   });
 
   describe('count parsers', () => {
@@ -147,6 +173,7 @@ describe('gosRecetario', () => {
       expect(parseMinutes('20')).toBe(20);
       expect(parseMinutes('1 h')).toBe(60);
       expect(parseMinutes('3000')).toBe(1440); // Clamped
+      expect(parseMinutes('48 horas')).toBe(1440); // Clamped via total calculation
       expect(parseMinutes('rapido')).toBe(0); // default
     });
   });
