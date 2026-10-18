@@ -2,6 +2,7 @@
 export const prerender = true;
 import LocalLayout from "../../layouts/LocalLayout.astro";
 import RecipeManager from "../../components/recipes/RecipeManager.svelte";
+import GosRecetarioImport from "../../components/recipes/GosRecetarioImport.svelte";
 ---
 
 <LocalLayout title="Recetas — Fi'ze Dashboard (Local)">
@@ -19,6 +20,7 @@ import RecipeManager from "../../components/recipes/RecipeManager.svelte";
       </p>
     </header>
 
+    <GosRecetarioImport client:load />
     <RecipeManager client:load />
   </main>
 </LocalLayout>
