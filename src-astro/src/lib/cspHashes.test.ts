@@ -60,4 +60,29 @@ describe('cspHashes.mjs', () => {
   it('7. sha256("") equivale al hash vacio estandar (evita que el formato cambie)', () => {
     expect(sha256('')).toBe('sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=');
   });
+
+  it('8. Dos scripts inline reales juntos producen exactamente 2 hashes (mata regex codiciosa de script)', () => {
+    const html = '<script>a()</script><script>b()</script>';
+    const { scripts, estilos } = hashesInline(html);
+    expect(scripts.size).toBe(2);
+    expect(scripts.has(computeSha256('a()'))).toBe(true);
+    expect(scripts.has(computeSha256('b()'))).toBe(true);
+    expect(estilos.size).toBe(0);
+  });
+
+  it('9. Un script real entre dos comentarios exige el hash de su contenido (mata regex codiciosa de comentarios)', () => {
+    const html = '<!-- a --><script>mid()</script><!-- b -->';
+    const { scripts, estilos } = hashesInline(html);
+    expect(scripts.size).toBe(1);
+    expect(scripts.has(computeSha256('mid()'))).toBe(true);
+    expect(estilos.size).toBe(0);
+  });
+
+  it('10. <script></script> vacio exige el hash de la cadena vacia sha256("") (mata if (m[1]))', () => {
+    const html = '<script></script>';
+    const { scripts, estilos } = hashesInline(html);
+    expect(scripts.size).toBe(1);
+    expect(scripts.has(sha256(''))).toBe(true);
+    expect(estilos.size).toBe(0);
+  });
 });
