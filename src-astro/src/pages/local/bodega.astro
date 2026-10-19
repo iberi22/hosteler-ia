@@ -1,0 +1,11 @@
+---
+// /local/bodega/ — modo local bodega read-only (docs/producto/NODO-LOCAL.md).
+import LocalLayout from '../../layouts/LocalLayout.astro';
+import BodegaView from '../../components/local/BodegaView.svelte';
+
+export const prerender = true;
+---
+
+<LocalLayout title="Bodega — Fize en este equipo">
+  <BodegaView client:load />
+</LocalLayout>

@@ -21,11 +21,11 @@ describe('Local Panel Static Checks', () => {
     });
   });
 
-  it('LocalLayout has exactly 12 navigation links', () => {
+  it('LocalLayout has exactly 13 navigation links', () => {
     const layoutPath = path.join(root, 'src', 'layouts', 'LocalLayout.astro');
     const content = readFileSync(layoutPath, 'utf8');
     const match = content.match(/href:/g);
-    expect(match?.length).toBe(12);
+    expect(match?.length).toBe(13);
   });
 
   it('backup format defines inventoryTx', () => {
