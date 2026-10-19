@@ -21,12 +21,12 @@
 // que ya tiene esa ruta, o se crea uno nuevo si no existe. El archivo es idempotente entre builds.
 
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // El parser del `_headers` y la comprobacion de las cabeceras de seguridad viven en un modulo aparte para
 // poder testearlos sin montar un dist/client: el mismo parser que reescribe el archivo los valida.
 import { CABECERAS_EXIGIDAS, parsearHeaders, problemasDeSeguridad } from './securityHeadersCheck.mjs';
+import { hashesInline } from './cspHashes.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const client = join(root, 'dist', 'client');
@@ -61,18 +61,9 @@ function desescapar(texto) {
     .replace(/&amp;/g, '&');
 }
 
-const sha256 = (texto) => `sha256-${createHash('sha256').update(texto, 'utf8').digest('base64')}`;
-
 function politicaDe(html) {
   const meta = html.match(/<meta http-equiv="content-security-policy" content="([^"]*)"/i);
   return meta ? desescapar(meta[1]) : null;
-}
-
-/** Hashes de los scripts y estilos inline que esta pagina lleva de verdad (sin comillas). */
-function hashesInline(html) {
-  const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => sha256(m[1]));
-  const estilos = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => sha256(m[1]));
-  return { scripts: new Set(scripts), estilos: new Set(estilos) };
 }
 
 /** La politica de Astro, con `script-src`/`style-src` recortados a los hashes de ESTA pagina. */
