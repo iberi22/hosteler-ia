@@ -126,7 +126,7 @@ export function parseServings(raw: unknown): number {
 export function parseMinutes(raw: unknown): number {
   if (typeof raw === 'number') return Math.min(1440, Math.max(0, Math.floor(raw)));
   if (typeof raw === 'string') {
-    let str = raw;
+    let str = raw.normalize('NFC');
     const hasDigitsOutside = /\d/.test(str.replace(/\([^)]*\)/g, ''));
     if (hasDigitsOutside) {
       // The field is the active prep or cook time, notes in parentheses are passive.
@@ -135,7 +135,7 @@ export function parseMinutes(raw: unknown): number {
 
     const unitMap: Record<string, number> = {
       d: 1440, 'día': 1440, 'días': 1440, dia: 1440, dias: 1440, day: 1440, days: 1440,
-      h: 60, hr: 60, hrs: 60, hora: 60, horas: 60, hour: 60, hours: 60,
+      h: 60, hr: 60, hrs: 60, hs: 60, hora: 60, horas: 60, hour: 60, hours: 60,
       m: 1, min: 1, mins: 1, minuto: 1, minutos: 1, minute: 1, minutes: 1,
       s: 1/60, seg: 1/60, segs: 1/60, segundo: 1/60, segundos: 1/60, sec: 1/60, secs: 1/60, second: 1/60, seconds: 1/60
     };
@@ -152,24 +152,19 @@ export function parseMinutes(raw: unknown): number {
       if (Object.prototype.hasOwnProperty.call(unitMap, unit)) {
         hasMatch = true;
         const multiplier = unitMap[unit];
-        total += val * multiplier;
+
+        if (multiplier < 1) {
+            total += Math.ceil(val * multiplier);
+        } else {
+            total += val * multiplier;
+        }
 
         if (multiplier === 60) {
           const rest = str.slice(regex.lastIndex);
-          const shorthandMatch = rest.match(/^\s*(\d{1,2})(?![a-záéíóúüñ])/i);
+          const shorthandMatch = rest.match(/^\s*(\d{1,2})(?![\d.,])(?!\s*[a-záéíóúüñ])/i);
           if (shorthandMatch) {
-            const afterShorthand = rest.slice(shorthandMatch[0].length);
-            const nextUnitMatch = afterShorthand.match(/^\s*([a-záéíóúüñ]+)(?![a-záéíóúüñ])/i);
-
-            let isNextAUnit = false;
-            if (nextUnitMatch && Object.prototype.hasOwnProperty.call(unitMap, nextUnitMatch[1].toLowerCase())) {
-                isNextAUnit = true;
-            }
-
-            if (!isNextAUnit) {
-               total += parseInt(shorthandMatch[1], 10);
-               regex.lastIndex += shorthandMatch[0].length;
-            }
+            total += parseInt(shorthandMatch[1], 10);
+            regex.lastIndex += shorthandMatch[0].length;
           }
         }
       }

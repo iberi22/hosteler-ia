@@ -195,7 +195,19 @@ describe('gosRecetario', () => {
         ['2 días', 1440],
         ['1 día', 1440],
         ['12 horas (reposo)', 720],
-        ['(2 horas)', 120]
+        ['(2 horas)', 120],
+
+        // Regression cases
+        ['1h30min', 90],
+        ['1 h 30min', 90],
+        ['1 hora 30min', 90],
+        ['2h15min', 135],
+        ['2 h 45min', 165],
+        ['20 segundos', 1],
+        ['10 seg', 1],
+        ['1 min 20 s', 2],
+        ['1 hs', 60],
+        ['1 hs 30 min', 90]
       ] as const;
 
       it.each(minuteCases)('parses "%s" to %i', (input, expected) => {
@@ -278,12 +290,20 @@ describe('gosRecetario', () => {
         main_ingredients: ['Harina', 'Leche', 'Huevo'],
         instructions: ['Mezclar', 'Hornear']
       }));
-      expect(() => encodeGosLink(recipes)).toThrowError(
+      expect(() => encodeGosLink(recipes)).toThrow(
         expect.objectContaining({
           name: 'GosLinkTooLongError',
           max: GOS_LINK_MAX_CHARS
         })
       );
+
+      try {
+        encodeGosLink(recipes);
+      } catch (err: any) {
+        expect(err.name).toBe('GosLinkTooLongError');
+        expect(err.length).toBeGreaterThan(2000);
+        expect(err.max).toBe(GOS_LINK_MAX_CHARS);
+      }
     });
 
     it('throws exactly at the boundary', () => {
@@ -295,6 +315,7 @@ describe('gosRecetario', () => {
 
       let lastValidLength = -1;
       let lastValidLink = '';
+      let threw = false;
 
       for (let k = 1000; k <= 3000; k++) {
         try {
@@ -303,16 +324,17 @@ describe('gosRecetario', () => {
           lastValidLink = encoded;
         } catch (err: any) {
           expect(err.name).toBe('GosLinkTooLongError');
-
-          expect(lastValidLength).toBeLessThanOrEqual(GOS_LINK_MAX_CHARS);
-          expect(lastValidLength).toBeGreaterThan(1996);
-
-          const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${lastValidLink}`);
-          expect(decoded.ok).toBe(true);
-
+          threw = true;
           break; // Stop loop after throwing
         }
       }
+
+      expect(threw).toBe(true);
+      expect(lastValidLength).toBeLessThanOrEqual(GOS_LINK_MAX_CHARS);
+      expect(lastValidLength).toBeGreaterThan(1996);
+
+      const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${lastValidLink}`);
+      expect(decoded.ok).toBe(true);
     });
   });
 });
