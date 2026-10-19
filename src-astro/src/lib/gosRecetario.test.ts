@@ -168,13 +168,97 @@ describe('gosRecetario', () => {
       expect(parseServings('ninguno')).toBe(1); // default
     });
 
-    it('parses minutes', () => {
-      expect(parseMinutes('1 h 30 min')).toBe(90);
-      expect(parseMinutes('20')).toBe(20);
-      expect(parseMinutes('1 h')).toBe(60);
-      expect(parseMinutes('3000')).toBe(1440); // Clamped
-      expect(parseMinutes('48 horas')).toBe(1440); // Clamped via total calculation
-      expect(parseMinutes('rapido')).toBe(0); // default
+    describe('parses minutes (table)', () => {
+      const minuteCases = [
+        // Standard controls
+        ['1 h 30 min', 90],
+        ['20', 20],
+        ['1 h', 60],
+        ['3000', 1440],
+        ['48 horas', 1440],
+        ['rapido', 0],
+
+        // New controls
+        ['1 hora 30 minutos', 90],
+        ['45 minutos', 45],
+        ['2 hrs', 120],
+        ['15-20 min', 20],
+        ['1 h (sin contar el reposo)', 60],
+
+        // Issue cases
+        ['3 días (fermentación)', 1440],
+        ['20 min (más 4h remojo)', 20],
+        ['1.5 h', 90],
+        ['1,5 horas', 90],
+        ['1h30', 90],
+        ['30 segundos', 1],
+        ['2 días', 1440],
+        ['1 día', 1440],
+        ['12 horas (reposo)', 720],
+        ['(2 horas)', 120],
+
+        // Regression cases
+        ['1h30min', 90],
+        ['1 h 30min', 90],
+        ['1 hora 30min', 90],
+        ['2h15min', 135],
+        ['2 h 45min', 165],
+        ['20 segundos', 1],
+        ['10 seg', 1],
+        ['1 min 20 s', 2],
+        ['1 hs', 60],
+        ['1 hs 30 min', 90],
+        ['3 di\u0301as', 1440],
+        ['30 s 30 s', 1],
+        ['2 horas,30 min', 150],
+        ['1h,30min', 90],
+
+        // Shorthand cap (< 60) and final rounding
+        ['1h 75', 60],
+        ['1 h 60', 60],
+        ['1 h 59', 119],
+        ['1.15 h', 69],
+        ['1.01 h', 61],
+        ['1,2 min', 1],
+        ['1.001 h', 60]
+      ] as const;
+
+      it.each(minuteCases)('parses "%s" to %i', (input, expected) => {
+        expect(parseMinutes(input)).toBe(expected);
+      });
+
+      it('termina en < 100 ms ante parentesis no cerrados sin comportamiento cuadratico', () => {
+        const input = '('.repeat(50000) + '1';
+        const t0 = performance.now();
+        const res = parseMinutes(input);
+        const elapsed = performance.now() - t0;
+        // El tope de 256 caracteres corta antes del '1' final: el resultado es 0 y la pasada queda acotada.
+        expect(res).toBe(0);
+        expect(elapsed).toBeLessThan(100);
+      });
+
+      it('quita solo el grupo de parentesis interior y cuenta el digito del externo', () => {
+        expect(parseMinutes('(1 (a) h')).toBe(60);
+      });
+
+      // Digit runs must not be re-scanned from every position (quadratic regex).
+      it('termina en < 500 ms ante una tirada larga de digitos tras una unidad', () => {
+        const input = '1h' + '1'.repeat(100000);
+        const t0 = performance.now();
+        const res = parseMinutes(input);
+        const elapsed = performance.now() - t0;
+        expect(res).toBe(60);
+        expect(elapsed).toBeLessThan(500);
+      });
+
+      it('termina en < 500 ms ante una tirada larga de digitos seguida de unidad', () => {
+        const input = '1'.repeat(40000) + 'h';
+        const t0 = performance.now();
+        const res = parseMinutes(input);
+        const elapsed = performance.now() - t0;
+        expect(res).toBe(1440);
+        expect(elapsed).toBeLessThan(500);
+      });
     });
   });
 
@@ -244,6 +328,58 @@ describe('gosRecetario', () => {
       const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${longPayload}`);
       expect(decoded.ok).toBe(false);
       expect(decoded.error).toMatch(/too|long|MAX_CHARS|demasiado/i);
+    });
+
+    it('throws GosLinkTooLongError for 30 recipes', () => {
+      const recipes = Array.from({ length: 30 }, (_, i) => ({
+        title: `Receta ${i}`,
+        main_ingredients: ['Harina', 'Leche', 'Huevo'],
+        instructions: ['Mezclar', 'Hornear']
+      }));
+      expect(() => encodeGosLink(recipes)).toThrow(
+        expect.objectContaining({
+          name: 'GosLinkTooLongError',
+          max: GOS_LINK_MAX_CHARS
+        })
+      );
+
+      try {
+        encodeGosLink(recipes);
+      } catch (err: any) {
+        expect(err.name).toBe('GosLinkTooLongError');
+        expect(err.length).toBeGreaterThan(2000);
+        expect(err.max).toBe(GOS_LINK_MAX_CHARS);
+      }
+    });
+
+    it('throws exactly at the boundary', () => {
+      const createRecipes = (titleLen: number) => [{
+        title: 'ñ'.repeat(titleLen),
+      }];
+
+      let lastValidLength = -1;
+      let lastValidLink = '';
+      let threw = false;
+
+      for (let k = 690; k <= 710; k++) {
+        try {
+          const encoded = encodeGosLink(createRecipes(k));
+          lastValidLength = encoded.length;
+          lastValidLink = encoded;
+        } catch (err: any) {
+          expect(err.name).toBe('GosLinkTooLongError');
+          expect(err.length).toBeGreaterThan(GOS_LINK_MAX_CHARS);
+          expect(err.max).toBe(GOS_LINK_MAX_CHARS);
+          threw = true;
+          break; // Stop loop after throwing
+        }
+      }
+
+      expect(threw).toBe(true);
+      expect(lastValidLength).toBe(GOS_LINK_MAX_CHARS);
+
+      const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${lastValidLink}`);
+      expect(decoded.ok).toBe(true);
     });
   });
 });
