@@ -127,10 +127,10 @@ export function parseMinutes(raw: unknown): number {
   if (typeof raw === 'number') return Math.min(1440, Math.max(0, Math.floor(raw)));
   if (typeof raw === 'string') {
     let str = raw.normalize('NFC');
-    const hasDigitsOutside = /\d/.test(str.replace(/\([^)]*\)/g, ''));
+    const hasDigitsOutside = /\d/.test(str.replace(/\([^()]*\)/g, ''));
     if (hasDigitsOutside) {
       // The field is the active prep or cook time, notes in parentheses are passive.
-      str = str.replace(/\([^)]*\)/g, '');
+      str = str.replace(/\([^()]*\)/g, '');
     }
 
     const unitMap: Record<string, number> = {
@@ -142,6 +142,7 @@ export function parseMinutes(raw: unknown): number {
 
     const regex = /((?:\d+(?:[.,]\d+)?))\s*([a-záéíóúüñ]+)(?![a-záéíóúüñ])/gi;
     let total = 0;
+    let totalSeconds = 0;
     let hasMatch = false;
 
     let match;
@@ -154,20 +155,27 @@ export function parseMinutes(raw: unknown): number {
         const multiplier = unitMap[unit];
 
         if (multiplier < 1) {
-            total += Math.ceil(val * multiplier);
+          totalSeconds += val;
         } else {
-            total += val * multiplier;
+          total += val * multiplier;
         }
 
         if (multiplier === 60) {
           const rest = str.slice(regex.lastIndex);
           const shorthandMatch = rest.match(/^\s*(\d{1,2})(?![\d.,])(?!\s*[a-záéíóúüñ])/i);
           if (shorthandMatch) {
-            total += parseInt(shorthandMatch[1], 10);
-            regex.lastIndex += shorthandMatch[0].length;
+            const mins = parseInt(shorthandMatch[1], 10);
+            if (mins < 60) {
+              total += mins;
+              regex.lastIndex += shorthandMatch[0].length;
+            }
           }
         }
       }
+    }
+
+    if (totalSeconds > 0) {
+      total += Math.ceil(totalSeconds / 60);
     }
 
     if (hasMatch) {

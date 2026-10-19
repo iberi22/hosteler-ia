@@ -207,11 +207,22 @@ describe('gosRecetario', () => {
         ['10 seg', 1],
         ['1 min 20 s', 2],
         ['1 hs', 60],
-        ['1 hs 30 min', 90]
+        ['1 hs 30 min', 90],
+        ['3 di\u0301as', 1440],
+        ['30 s 30 s', 1]
       ] as const;
 
       it.each(minuteCases)('parses "%s" to %i', (input, expected) => {
         expect(parseMinutes(input)).toBe(expected);
+      });
+
+      it('termina en < 100 ms ante parentesis no cerrados sin comportamiento cuadratico', () => {
+        const input = '('.repeat(50000) + '1';
+        const t0 = performance.now();
+        const res = parseMinutes(input);
+        const elapsed = performance.now() - t0;
+        expect(res).toBe(1);
+        expect(elapsed).toBeLessThan(100);
       });
     });
   });
@@ -308,30 +319,29 @@ describe('gosRecetario', () => {
 
     it('throws exactly at the boundary', () => {
       const createRecipes = (titleLen: number) => [{
-        title: 'x'.repeat(titleLen),
-        main_ingredients: ['Harina', 'Leche', 'Huevo'],
-        instructions: ['Mezclar', 'Hornear']
+        title: 'ñ'.repeat(titleLen),
       }];
 
       let lastValidLength = -1;
       let lastValidLink = '';
       let threw = false;
 
-      for (let k = 1000; k <= 3000; k++) {
+      for (let k = 690; k <= 710; k++) {
         try {
           const encoded = encodeGosLink(createRecipes(k));
           lastValidLength = encoded.length;
           lastValidLink = encoded;
         } catch (err: any) {
           expect(err.name).toBe('GosLinkTooLongError');
+          expect(err.length).toBeGreaterThan(GOS_LINK_MAX_CHARS);
+          expect(err.max).toBe(GOS_LINK_MAX_CHARS);
           threw = true;
           break; // Stop loop after throwing
         }
       }
 
       expect(threw).toBe(true);
-      expect(lastValidLength).toBeLessThanOrEqual(GOS_LINK_MAX_CHARS);
-      expect(lastValidLength).toBeGreaterThan(1996);
+      expect(lastValidLength).toBe(GOS_LINK_MAX_CHARS);
 
       const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${lastValidLink}`);
       expect(decoded.ok).toBe(true);
