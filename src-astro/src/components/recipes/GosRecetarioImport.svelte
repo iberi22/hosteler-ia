@@ -10,13 +10,14 @@
     type GosRecipeDraft,
     type InventoryMatch
   } from '../../lib/gosRecetario';
+  import { buildImportSummary } from '../../lib/gosRecetarioSummary';
 
   let inventory: InventoryMatch[] = [];
   let menuItems: { id: string; name: string }[] = [];
   let existingRecipes: { id: string; name: string; menuItemId: string }[] = [];
 
   let importedRecipes: { draft: GosRecipeDraft; lines: any[]; unmatched: string[]; menuItemId: string; status: 'pending' | 'success' | 'error' | 'skipped'; errorMsg?: string }[] = [];
-  let summary = '';
+  $: summary = buildImportSummary(importedRecipes);
   let importing = false;
   let fileInput: HTMLInputElement;
   let pasteText = '';
@@ -143,7 +144,6 @@
       if (res.ok) {
         item.status = 'success';
         existingRecipes.push({ id: '', name: item.draft.title, menuItemId: item.menuItemId });
-        updateSummary();
       } else {
         const data = await res.json();
         item.status = 'error';
@@ -156,19 +156,6 @@
       importing = false;
       importedRecipes = [...importedRecipes];
     }
-  }
-
-  function updateSummary() {
-    const successCount = importedRecipes.filter(r => r.status === 'success').length;
-    const errorCount = importedRecipes.filter(r => r.status === 'error' || r.status === 'skipped').length;
-
-    const allUnmatched = new Set<string>();
-    for (const r of importedRecipes) {
-      for (const u of r.unmatched) allUnmatched.add(u);
-    }
-    const unmatchedStr = allUnmatched.size > 0 ? Array.from(allUnmatched).join(', ') : 'ninguno';
-
-    summary = `Importadas ${successCount} receta(s), omitidas ${errorCount}, ingredientes sin insumo: ${unmatchedStr}`;
   }
 </script>
 
