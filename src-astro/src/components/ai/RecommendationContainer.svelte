@@ -6,6 +6,7 @@
   import { localInferWithTier } from '../../lib/localAi';
   import { getIdbAdapter } from '../../lib/idbAdapter';
   import { loadIdentity } from '../../lib/local/identity';
+  import { isLocalMode } from '../../lib/local/localMode';
   import type { StorageAdapter } from '../../lib/domain';
 
   interface Props {
@@ -31,6 +32,11 @@
       let instId = propInstanceId;
 
       if (!adapter || !instId) {
+        // Fuera de /local/ no hay nodo local que leer: el dashboard de nube no toca datos del equipo.
+        if (!isLocalMode()) {
+          visible = false;
+          return;
+        }
         // Solo lectura: nunca crea identidad (a diferencia de ensureIdentity).
         const identity = await loadIdentity();
         if (!identity) {
