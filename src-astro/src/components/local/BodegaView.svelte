@@ -106,7 +106,8 @@
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Diferido: revocar en el mismo tick puede cortar la descarga en Firefox/Safari (mismo patron que lib/local/backupData.ts).
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   async function doExport() {
