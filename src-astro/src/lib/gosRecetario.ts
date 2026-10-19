@@ -126,7 +126,7 @@ export function parseServings(raw: unknown): number {
 export function parseMinutes(raw: unknown): number {
   if (typeof raw === 'number') return Math.min(1440, Math.max(0, Math.floor(raw)));
   if (typeof raw === 'string') {
-    let str = raw.normalize('NFC');
+    let str = raw.slice(0, 256).normalize('NFC');
     const hasDigitsOutside = /\d/.test(str.replace(/\([^()]*\)/g, ''));
     if (hasDigitsOutside) {
       // The field is the active prep or cook time, notes in parentheses are passive.
@@ -140,7 +140,7 @@ export function parseMinutes(raw: unknown): number {
       s: 1/60, seg: 1/60, segs: 1/60, segundo: 1/60, segundos: 1/60, sec: 1/60, secs: 1/60, second: 1/60, seconds: 1/60
     };
 
-    const regex = /((?:\d+(?:[.,]\d+)?))\s*([a-záéíóúüñ]+)(?![a-záéíóúüñ])/gi;
+    const regex = /(?<!\d)((?:\d+(?:[.,]\d+)?))\s*([a-záéíóúüñ]+)(?![a-záéíóúüñ])/gi;
     let total = 0;
     let totalSeconds = 0;
     let hasMatch = false;
