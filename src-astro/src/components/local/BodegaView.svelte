@@ -5,10 +5,10 @@
     buildInventorySnapshot,
     sealInventorySnapshot,
     InventoryExportError,
-  inventoryExportFilename,
+    inventoryExportFilename,
     type PlainInventorySnapshot,
   } from '../../lib/inventoryExport';
-  import { filterRows, isLowStock, ageInDays } from '../../lib/local/bodegaView';
+  import { filterRows, isLowStock, ageInDays, isImportTooBig } from '../../lib/local/bodegaView';
   import { getIdbAdapter } from '../../lib/idbAdapter';
   import { loadIdentity } from '../../lib/local/identity';
   import { LockedError } from '../../lib/local/deviceLock';
@@ -57,8 +57,8 @@
   async function loadFile(e: Event) {
     e.preventDefault();
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      importMsg = { ok: false, text: 'El archivo es demasiado grande (más de 5 MB).' }
+    if (isImportTooBig(file.size)) {
+      importMsg = { ok: false, text: 'El archivo es demasiado grande (más de 5 MB).' };
       return;
     }
 
@@ -73,7 +73,7 @@
           const peek = JSON.parse(text);
           if (peek.format === 'swal-inventory-export-enc/v1') {
             isEncrypted = true;
-            importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' }
+            importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' };
             importing = false;
             return;
           }
@@ -81,13 +81,13 @@
       }
 
       snapshot = await openInventorySnapshot(text, isEncrypted ? importPassphrase : undefined);
-      importMsg = { ok: true, text: 'Inventario cargado correctamente. Solo lectura.' }
+      importMsg = { ok: true, text: 'Inventario cargado correctamente. Solo lectura.' };
     } catch (err) {
       if (err instanceof InventoryExportError && err.kind === 'clave' && !isEncrypted) {
         isEncrypted = true;
-        importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' }
+        importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' };
       } else {
-        importMsg = { ok: false, text: errorText(err) }
+        importMsg = { ok: false, text: errorText(err) };
       }
       snapshot = null;
     } finally {

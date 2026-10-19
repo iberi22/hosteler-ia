@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterRows, isLowStock, ageInDays } from './bodegaView';
+import { filterRows, isLowStock, ageInDays, isImportTooBig, MAX_IMPORT_BYTES } from './bodegaView';
 
 describe('bodegaView helpers', () => {
   const mockItems = [
@@ -71,6 +71,21 @@ describe('bodegaView helpers', () => {
 
     it('floors correctly for partial days (e.g. 1.6 days -> 1 day)', () => {
       expect(ageInDays('2026-10-14T21:36:00.000Z')).toBe(1);
+    });
+  });
+
+  describe('isImportTooBig', () => {
+    it('rejects a file larger than 5 MB', () => {
+      expect(isImportTooBig(MAX_IMPORT_BYTES + 1)).toBe(true);
+    });
+
+    it('accepts a file exactly at the 5 MB limit', () => {
+      expect(isImportTooBig(MAX_IMPORT_BYTES)).toBe(false);
+    });
+
+    it('accepts small files', () => {
+      expect(isImportTooBig(1024)).toBe(false);
+      expect(isImportTooBig(0)).toBe(false);
     });
   });
 });

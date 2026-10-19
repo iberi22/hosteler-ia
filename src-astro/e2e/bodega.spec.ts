@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { sealInventorySnapshot, type PlainInventorySnapshot } from '../src/lib/inventoryExport';
 
 // Onboarding hasta el paso 4 para que la app no responda 409
 async function onboardLocal(page: Page) {
@@ -12,7 +13,7 @@ async function onboardLocal(page: Page) {
   await expect(page.getByTestId('paso')).toHaveText('Paso 4 de 6');
 }
 
-const mockSnapshot = {
+const mockSnapshot: PlainInventorySnapshot = {
   format: "swal-inventory-export/v1",
   source: { appId: "shelf", instanceId: "test-123", schemaVersion: 1, exportedAt: "2026-10-15T10:00:00Z" },
   currency: "COP",
@@ -24,6 +25,16 @@ const mockSnapshot = {
   ],
   movements: []
 };
+
+// Clave del sobre cifrado de prueba (>= 8 chars, como exige el selector de minutos del export).
+const ENC_PASSPHRASE = 'clave-secreta-123';
+
+async function gotoBodega(page: Page) {
+  await page.goto('/local/bodega/');
+  // Wait for Astro island hydration
+  await page.waitForFunction(() => !document.querySelector('astro-island[ssr]'));
+  await expect(page.getByRole('heading', { name: 'Bodega' })).toBeVisible();
+}
 
 test.describe('Bodega read-only inventory', () => {
   test('loads a plain snapshot, displays data, and does not make network requests or save to IDB', async ({ page }) => {
@@ -44,11 +55,7 @@ test.describe('Bodega read-only inventory', () => {
     });
 
     await onboardLocal(page);
-    await page.goto('/local/bodega/');
-
-    // Wait for Astro island hydration
-    await page.waitForFunction(() => !document.querySelector('astro-island[ssr]'));
-    await expect(page.getByRole('heading', { name: 'Bodega' })).toBeVisible();
+    await gotoBodega(page);
 
     // Take snapshot of IDB databases before
     const dbsBefore = await page.evaluate(async () => {
@@ -96,5 +103,66 @@ test.describe('Bodega read-only inventory', () => {
 
     expect(dbsAfter).toEqual(dbsBefore);
     expect(externalReqCount).toBe(0);
+  });
+
+  test('loads an encrypted snapshot after entering the passphrase', async ({ page }) => {
+    await onboardLocal(page);
+    await gotoBodega(page);
+
+    // Build a real encrypted envelope with the app's own sealer (no cloud, deterministic scheme).
+    const enc = await sealInventorySnapshot(mockSnapshot, ENC_PASSPHRASE);
+    const buffer = Buffer.from(JSON.stringify(enc));
+
+    await page.locator('#bodega-file').setInputFiles({
+      name: 'snapshot.enc.json',
+      mimeType: 'application/octet-stream',
+      buffer
+    });
+
+    // First submit: the app detects the envelope and asks for the passphrase.
+    await page.getByRole('button', { name: 'Abrir inventario' }).click();
+    await expect(page.getByTestId('import-msg')).toHaveText(/cifrado/i);
+
+    // Enter the passphrase and re-submit: it decrypts and shows the data.
+    await page.getByLabel('Clave del archivo').fill(ENC_PASSPHRASE);
+    await page.getByRole('button', { name: 'Abrir inventario' }).click();
+
+    await expect(page.getByText('Inventario cargado correctamente. Solo lectura.')).toBeVisible();
+    const rows = page.locator('tbody tr');
+    await expect(rows).toHaveCount(3);
+    await expect(page.getByText('Harina')).toBeVisible();
+  });
+
+  test('rejects an import file larger than 5 MB before reading it', async ({ page }) => {
+    await onboardLocal(page);
+    await gotoBodega(page);
+
+    // 5 MB + 1 KB of whitespace: over the MAX_IMPORT_BYTES cap.
+    const big = Buffer.alloc(5 * 1024 * 1024 + 1024, 0x20);
+    await page.locator('#bodega-file').setInputFiles({
+      name: 'huge.json',
+      mimeType: 'application/json',
+      buffer: big
+    });
+
+    await page.getByRole('button', { name: 'Abrir inventario' }).click();
+    await expect(page.getByTestId('import-msg')).toHaveText(/demasiado grande/i);
+    // Nothing is loaded: no table rows.
+    await expect(page.locator('tbody tr')).toHaveCount(0);
+  });
+
+  test('exports the local inventory as a downloadable file with the correct name', async ({ page }) => {
+    await onboardLocal(page);
+    await gotoBodega(page);
+
+    // Plain export avoids the passphrase-confirm dance; we assert the button works and the filename.
+    await page.getByLabel('Sin cifrar (el archivo se podrá leer sin clave)').check();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Descargar inventario' }).click();
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/^fize-inventario-\d{4}-\d{2}-\d{2}\.swal-inventory\.json$/);
+    await expect(page.getByText('Inventario exportado correctamente.')).toBeVisible();
   });
 });
