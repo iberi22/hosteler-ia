@@ -111,9 +111,15 @@ test.describe('Bodega read-only inventory', () => {
       if (!/^https?:/.test(url)) return;
       if (new URL(url).origin !== appOrigin) offOrigin.push(url);
     };
-    // 'requestfailed' tambien: una peticion bloqueada por la CSP puede no emitir 'request'.
     page.on('request', (req) => record(req.url()));
     page.on('requestfailed', (req) => record(req.url()));
+    // Una peticion que la CSP bloquea no emite 'request' ni 'requestfailed' en Chromium: se registra el
+    // evento securitypolicyviolation de la propia pagina (blockedURI = URL del intento).
+    await page.addInitScript(() => {
+      const w = window as unknown as { __cspBlocked: string[] };
+      w.__cspBlocked = [];
+      document.addEventListener('securitypolicyviolation', (e) => w.__cspBlocked.push(e.blockedURI));
+    });
 
     await onboardLocal(page);
     await gotoBodega(page);
@@ -158,7 +164,9 @@ test.describe('Bodega read-only inventory', () => {
     expect(Object.keys(dbsAfter).sort()).toEqual(Object.keys(dbsBefore).sort());
     expect(dbsAfter).toEqual(dbsBefore);
 
-    expect(offOrigin).toEqual([]);
+    const cspBlocked = await page.evaluate(() => (window as unknown as { __cspBlocked: string[] }).__cspBlocked);
+    const blockedOffOrigin = cspBlocked.filter((u) => /^https?:/.test(u) && new URL(u).origin !== appOrigin);
+    expect([...offOrigin, ...blockedOffOrigin]).toEqual([]);
   });
 
   test('loads an encrypted snapshot after entering the passphrase', async ({ page }) => {
