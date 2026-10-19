@@ -16,7 +16,11 @@ describe('Local Panel Static Checks', () => {
       
       expect(content).toContain('LocalLayout');
       expect(content).not.toContain('PredictionCard');
-      expect(content).not.toContain('RecommendationContainer');
+      if (page === 'inventario.astro') {
+        expect(content).toContain('RecommendationContainer');
+      } else {
+        expect(content).not.toContain('RecommendationContainer');
+      }
       expect(content).not.toContain('/api/ai');
     });
   });

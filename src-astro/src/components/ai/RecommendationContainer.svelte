@@ -5,7 +5,17 @@
   import { getRecommendations } from '../../lib/recommendations';
   import { localInfer, detectLocalAiTier } from '../../lib/localAi';
   import { createStorageAdapter } from '../../lib/storageAdapter';
+  import { getIdbAdapter } from '../../lib/idbAdapter';
+  import { ensureIdentity } from '../../lib/local/identity';
   import { domainConfig } from '../../lib/domain.config';
+  import type { StorageAdapter } from '../../lib/domain';
+
+  interface Props {
+    adapter?: StorageAdapter;
+    instanceId?: string;
+  }
+
+  let { adapter: propAdapter, instanceId: propInstanceId }: Props = $props();
 
   let recommendations: Recommendation[] = $state([]);
   let loading: boolean = $state(false);
@@ -16,10 +26,23 @@
     loading = true;
     error = '';
     try {
-      const adapter = createStorageAdapter();
-      const recs = await getRecommendations(adapter, domainConfig.instanceId, localInfer);
+      let adapter = propAdapter;
+      let instId = propInstanceId;
+
+      if (!adapter || !instId) {
+        try {
+          const identity = await ensureIdentity();
+          adapter = adapter ?? getIdbAdapter();
+          instId = instId ?? identity.instanceId;
+        } catch {
+          adapter = adapter ?? createStorageAdapter();
+          instId = instId ?? domainConfig.instanceId;
+        }
+      }
+
+      const recs = await getRecommendations(adapter, instId, localInfer);
       if (recs.length === 1 && recs[0].title === 'Sin recomendaciones') {
-         recommendations = [];
+        recommendations = [];
       } else {
         recommendations = recs;
       }
@@ -33,7 +56,7 @@
   onMount(async () => {
     const tier = await detectLocalAiTier();
     aiTierLabel = tier === 'prompt-api' ? 'IA local: navegador' : 'IA local: reglas del local';
-    fetchRecs();
+    await fetchRecs();
   });
 </script>
 

@@ -1,36 +1,58 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+// Onboarding hasta el paso 4 para tener un restaurante real creado en el IndexedDB local
+async function onboardLocal(page: Page) {
+  await page.goto('/local/');
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await page.getByLabel('Nombre del negocio').fill('Doña Rosa');
+  await page.getByLabel('WhatsApp para pedidos').fill('300 123 4567');
+  await page.getByLabel('Dirección').fill('Cra 15 # 85-20, Bogotá');
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(page.getByTestId('paso')).toHaveText('Paso 4 de 6');
+}
 
 test.describe('Inventory Recommendations (Local Mode)', () => {
   test('should load the local inventory page and show the recommendation panel without cloud requests', async ({ page }) => {
     let cloudRequestsCount = 0;
-    page.on('request', req => {
+    page.on('request', (req) => {
       if (req.url().includes('/api/ai/infer')) {
         cloudRequestsCount++;
       }
     });
 
-    // Go to local inventory page
-    await page.goto('/local/inventario');
-    
-    // Ensure the page title is visible
+    // 1. Onboarding para inicializar la identidad e IndexedDB con el restaurante
+    await onboardLocal(page);
+
+    // 2. Ir a inventario local y esperar carga
+    await page.goto('/local/inventario/');
     await expect(page.locator('h1.page-title', { hasText: 'Inventario' })).toBeVisible();
 
-    // The recommendation panel should be visible
+    // 3. El panel de recomendaciones debe estar visible en el DOM
     const panel = page.locator('section[aria-label="Recomendaciones Fi\'ze"]');
     await expect(panel).toBeVisible();
-    
-    // Assert that the AI tier line is visible
-    const tierLine = page.locator('p[data-testid="ai-tier"]');
+
+    // 4. Encabezado del panel
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('✨ Fi’ze recomienda');
+
+    // 5. Etiqueta del tier de IA local
+    const tierLine = page.getByTestId('ai-tier');
     await expect(tierLine).toBeVisible();
+    await expect(tierLine).toHaveText('IA local: reglas del local');
 
-    // Assert that at least one recommendation is visible (or the "all in order" fallback from local fallback rules)
-    const listItems = panel.locator('li, p:has-text("Todo en orden"), p:has-text("Sin recomendaciones por ahora"), p:has-text("En el navegador la API solo corre en modo local")');
-        await expect(listItems.first()).toBeVisible();
+    // 6. Contenido generado por el motor de reglas local: item [ops]
+    const recItem = panel.locator('ul li').first();
+    await expect(recItem).toBeVisible();
+    await expect(recItem.locator('strong')).toContainText('[ops] Todo en orden');
+    await expect(recItem.locator('p')).toContainText('El restaurante funciona correctamente.');
 
-    // Assert that no request to the cloud API was made
+    // 7. Botón de refresco interactivo en el DOM del panel
+    const refreshBtn = panel.getByRole('button', { name: 'Actualizar' });
+    await expect(refreshBtn).toBeVisible();
+    await refreshBtn.click();
+    await expect(recItem).toBeVisible();
+
+    // 8. Confirmar que ninguna petición salió hacia la API en la nube
     expect(cloudRequestsCount).toBe(0);
-
-    // Assert that standard page loaded without unexpected errors
-    await expect(page.locator('.inventory-page')).toBeVisible();
   });
 });
