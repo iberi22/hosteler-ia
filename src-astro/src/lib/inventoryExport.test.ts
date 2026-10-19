@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMemoryAdapter } from './domain';
 import { appendTx } from './inventoryLedger';
 import {
@@ -17,6 +17,7 @@ import {
 describe('Inventory Export', () => {
   beforeEach(() => {
     getMemoryAdapter().clear();
+    vi.restoreAllMocks();
   });
 
   const seedData = async (instanceId = 'default', suffix = '') => {
@@ -523,5 +524,123 @@ describe('Inventory Export', () => {
     const d = new Date('2026-10-02T12:00:00.000Z');
     const filename = inventoryExportFilename('cualquiera', d);
     expect(filename).toBe('fize-inventario-2026-10-02.swal-inventory.json');
+  });
+
+  describe('Interoperabilidad de checks HMAC (Fize vs GARA-G)', () => {
+    async function deriveHmacKey(passphrase: string, saltB64: string, iterations: number) {
+      const enc = new TextEncoder().encode(passphrase);
+      const base = await crypto.subtle.importKey('raw', enc, 'PBKDF2', false, ['deriveBits']);
+      const saltBin = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+      const bitsBuf = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: saltBin, iterations }, base, 512);
+      const hmacBin = new Uint8Array(bitsBuf).subarray(32, 64);
+      return crypto.subtle.importKey('raw', hmacBin, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    }
+
+    async function buildGaraCheck(enc: EncryptedInventorySnapshot, passphrase: string) {
+      const hmacKey = await deriveHmacKey(passphrase, enc.salt, enc.kdf.iterations);
+      const payload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${enc.salt}`);
+      const sig = await crypto.subtle.sign('HMAC', hmacKey, payload);
+      return btoa(String.fromCharCode(...new Uint8Array(sig)));
+    }
+
+    async function buildFizeCheck(enc: EncryptedInventorySnapshot, passphrase: string) {
+      const hmacKey = await deriveHmacKey(passphrase, enc.salt, enc.kdf.iterations);
+      const payload = new TextEncoder().encode(`swal-inventory-export-enc/v1|${enc.salt}|${enc.iv}`);
+      const sig = await crypto.subtle.sign('HMAC', hmacKey, payload);
+      return btoa(String.fromCharCode(...new Uint8Array(sig)));
+    }
+
+    it('(a) Un sobre estilo GARA (check sobre fmt|salt) abre correctamente con la passphrase correcta', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+      const garaEnc = { ...enc, check: garaCheck };
+
+      const opened = await openInventorySnapshot(garaEnc, 'secreta');
+      expect(opened).toEqual(snap);
+    });
+
+    it('(b) Un sobre estilo GARA con passphrase incorrecta da "clave"', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+      const garaEnc = { ...enc, check: garaCheck };
+
+      const err = await catchError(openInventorySnapshot(garaEnc, 'mala'));
+      expect(err).toBeInstanceOf(InventoryExportError);
+      expect(err.kind).toBe('clave');
+    });
+
+    it('(c) Un sobre estilo GARA con ciphertext alterado y passphrase correcta da "alterado"', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+
+      // Use the actual payload modifications from the test
+      const tamperedEnc = { ...enc, check: garaCheck, ciphertext: enc.ciphertext.replace('A', 'B') };
+
+      const err = await catchError(openInventorySnapshot(tamperedEnc, 'secreta'));
+      expect(err).toBeInstanceOf(InventoryExportError);
+      expect(err.kind).toBe('alterado');
+    });
+
+    it('(c2) Un sobre estilo GARA con iv alterado y passphrase correcta da "alterado"', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+
+      // Use actual iv mutation
+      const bin = atob(enc.iv);
+      const modifiedBin = String.fromCharCode(bin.charCodeAt(0) ^ 1) + bin.substring(1);
+      const tamperedEnc = { ...enc, check: garaCheck, iv: btoa(modifiedBin) };
+
+      const err = await catchError(openInventorySnapshot(tamperedEnc, 'secreta'));
+      expect(err).toBeInstanceOf(InventoryExportError);
+      expect(err.kind).toBe('alterado');
+    });
+
+    it('(d) Un sobre sellado en Fize emite el check fmt|salt|iv y sigue abriendo (deep equality)', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      // El sello Fize emite EXACTAMENTE la forma fmt|salt|iv, no la GARA fmt|salt.
+      const expectedFizeCheck = await buildFizeCheck(enc, 'secreta');
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+      expect(enc.check).toEqual(expectedFizeCheck);
+      expect(enc.check).not.toEqual(garaCheck);
+
+      // Y sigue abriendo con igualdad profunda (toEqual, no solo truthy/length).
+      const opened = await openInventorySnapshot(enc, 'secreta');
+      expect(opened).toEqual(snap);
+    });
+
+    it('(e) el open calcula EXACTAMENTE los dos HMAC fmt|salt y fmt|salt|iv (sin short-circuit; espía con toEqual)', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta'); // forma Fize (check=fmt|salt|iv)
+
+      const spy = vi.spyOn(crypto.subtle, 'sign');
+      await openInventorySnapshot(enc, 'secreta');
+
+      const payloads = spy.mock.calls
+        .filter((call) => call[0] === 'HMAC')
+        .map((call) => new TextDecoder().decode(call[2] as ArrayBufferView));
+      spy.mockRestore();
+
+      const expectedFize = `swal-inventory-export-enc/v1|${enc.salt}|${enc.iv}`;
+      const expectedGara = `swal-inventory-export-enc/v1|${enc.salt}`;
+      // Afirma los DOS payloads distintos exactos (no un count/truthy). Si el código
+      // firmara el mismo payload dos veces, o hiciera short-circuit, esto falla.
+      expect([...payloads].sort()).toEqual([expectedFize, expectedGara].sort());
+    });
   });
 });

@@ -9,6 +9,10 @@ import { digestRows, digestStoredInstance, entityNames, type ArchivedLocals, typ
 import { getIdbAdapter, resetIdbForTests } from '../idbAdapter';
 import type { DomainRecord } from '../domain';
 
+// Each case builds two locals; the 5s default is hit under CPU load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+const WAIT_MS = 20_000;
+
 // Restaurar una copia (auditoria local-node B1/B2): atomica, y la copia de OTRO local solo con confirmacion,
 // archivando el local anterior (llave, ajustes y SU codigo) sin borrar sus filas.
 
@@ -379,7 +383,7 @@ describe('restaurar: dos pestañas del mismo equipo', () => {
     });
 
     const enCurso = restoreBackup(fileB, b.code, { replaceInstance: true }); // pestaña A
-    await vi.waitFor(async () => expect(await getLocal('restorePending')).toBeTruthy(), { timeout: 10000 });
+    await vi.waitFor(async () => expect(await getLocal('restorePending')).toBeTruthy(), { timeout: WAIT_MS });
 
     // Pestaña B abre la app (loadIdentity -> settle) mientras A escribe las filas.
     resetIdentityCacheForTests();
@@ -413,7 +417,7 @@ describe('restaurar: dos pestañas del mismo equipo', () => {
     });
 
     const primeraRestauracion = restoreBackup(fileB, b.code, { replaceInstance: true });
-    await vi.waitFor(async () => expect(await getLocal('restorePending')).toBeTruthy(), { timeout: 10000 });
+    await vi.waitFor(async () => expect(await getLocal('restorePending')).toBeTruthy(), { timeout: WAIT_MS });
     const before = await snapshot([a.instanceId, b.instanceId]);
 
     await expectBackupError(restoreBackup(fileB, b.code, { replaceInstance: true }), 'en-curso');
