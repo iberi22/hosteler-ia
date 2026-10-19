@@ -209,7 +209,16 @@ describe('gosRecetario', () => {
         ['1 hs', 60],
         ['1 hs 30 min', 90],
         ['3 di\u0301as', 1440],
-        ['30 s 30 s', 1]
+        ['30 s 30 s', 1],
+        ['2 horas,30 min', 150],
+        ['1h,30min', 90],
+
+        // Shorthand cap (< 60) and final rounding
+        ['1h 75', 60],
+        ['1 h 60', 60],
+        ['1 h 59', 119],
+        ['1.15 h', 69],
+        ['1.01 h', 61]
       ] as const;
 
       it.each(minuteCases)('parses "%s" to %i', (input, expected) => {
@@ -221,8 +230,32 @@ describe('gosRecetario', () => {
         const t0 = performance.now();
         const res = parseMinutes(input);
         const elapsed = performance.now() - t0;
-        expect(res).toBe(1);
+        // El tope de 256 caracteres corta antes del '1' final: el resultado es 0 y la pasada queda acotada.
+        expect(res).toBe(0);
         expect(elapsed).toBeLessThan(100);
+      });
+
+      it('quita solo el grupo de parentesis interior y cuenta el digito del externo', () => {
+        expect(parseMinutes('(1 (a) h')).toBe(60);
+      });
+
+      // Digit runs must not be re-scanned from every position (quadratic regex).
+      it('termina en < 500 ms ante una tirada larga de digitos tras una unidad', () => {
+        const input = '1h' + '1'.repeat(100000);
+        const t0 = performance.now();
+        const res = parseMinutes(input);
+        const elapsed = performance.now() - t0;
+        expect(res).toBe(60);
+        expect(elapsed).toBeLessThan(500);
+      });
+
+      it('termina en < 500 ms ante una tirada larga de digitos seguida de unidad', () => {
+        const input = '1'.repeat(40000) + 'h';
+        const t0 = performance.now();
+        const res = parseMinutes(input);
+        const elapsed = performance.now() - t0;
+        expect(res).toBe(1440);
+        expect(elapsed).toBeLessThan(500);
       });
     });
   });
