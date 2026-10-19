@@ -168,13 +168,39 @@ describe('gosRecetario', () => {
       expect(parseServings('ninguno')).toBe(1); // default
     });
 
-    it('parses minutes', () => {
-      expect(parseMinutes('1 h 30 min')).toBe(90);
-      expect(parseMinutes('20')).toBe(20);
-      expect(parseMinutes('1 h')).toBe(60);
-      expect(parseMinutes('3000')).toBe(1440); // Clamped
-      expect(parseMinutes('48 horas')).toBe(1440); // Clamped via total calculation
-      expect(parseMinutes('rapido')).toBe(0); // default
+    describe('parses minutes (table)', () => {
+      const minuteCases = [
+        // Standard controls
+        ['1 h 30 min', 90],
+        ['20', 20],
+        ['1 h', 60],
+        ['3000', 1440],
+        ['48 horas', 1440],
+        ['rapido', 0],
+
+        // New controls
+        ['1 hora 30 minutos', 90],
+        ['45 minutos', 45],
+        ['2 hrs', 120],
+        ['15-20 min', 20],
+        ['1 h (sin contar el reposo)', 60],
+
+        // Issue cases
+        ['3 días (fermentación)', 1440],
+        ['20 min (más 4h remojo)', 20],
+        ['1.5 h', 90],
+        ['1,5 horas', 90],
+        ['1h30', 90],
+        ['30 segundos', 1],
+        ['2 días', 1440],
+        ['1 día', 1440],
+        ['12 horas (reposo)', 720],
+        ['(2 horas)', 120]
+      ] as const;
+
+      it.each(minuteCases)('parses "%s" to %i', (input, expected) => {
+        expect(parseMinutes(input)).toBe(expected);
+      });
     });
   });
 
@@ -244,6 +270,49 @@ describe('gosRecetario', () => {
       const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${longPayload}`);
       expect(decoded.ok).toBe(false);
       expect(decoded.error).toMatch(/too|long|MAX_CHARS|demasiado/i);
+    });
+
+    it('throws GosLinkTooLongError for 30 recipes', () => {
+      const recipes = Array.from({ length: 30 }, (_, i) => ({
+        title: `Receta ${i}`,
+        main_ingredients: ['Harina', 'Leche', 'Huevo'],
+        instructions: ['Mezclar', 'Hornear']
+      }));
+      expect(() => encodeGosLink(recipes)).toThrowError(
+        expect.objectContaining({
+          name: 'GosLinkTooLongError',
+          max: GOS_LINK_MAX_CHARS
+        })
+      );
+    });
+
+    it('throws exactly at the boundary', () => {
+      const createRecipes = (titleLen: number) => [{
+        title: 'x'.repeat(titleLen),
+        main_ingredients: ['Harina', 'Leche', 'Huevo'],
+        instructions: ['Mezclar', 'Hornear']
+      }];
+
+      let lastValidLength = -1;
+      let lastValidLink = '';
+
+      for (let k = 1000; k <= 3000; k++) {
+        try {
+          const encoded = encodeGosLink(createRecipes(k));
+          lastValidLength = encoded.length;
+          lastValidLink = encoded;
+        } catch (err: any) {
+          expect(err.name).toBe('GosLinkTooLongError');
+
+          expect(lastValidLength).toBeLessThanOrEqual(GOS_LINK_MAX_CHARS);
+          expect(lastValidLength).toBeGreaterThan(1996);
+
+          const decoded = decodeGosLink(`?${GOS_LINK_PARAM}=${lastValidLink}`);
+          expect(decoded.ok).toBe(true);
+
+          break; // Stop loop after throwing
+        }
+      }
     });
   });
 });
