@@ -218,7 +218,9 @@ describe('gosRecetario', () => {
         ['1 h 60', 60],
         ['1 h 59', 119],
         ['1.15 h', 69],
-        ['1.01 h', 61]
+        ['1.01 h', 61],
+        ['1,2 min', 1],
+        ['1.001 h', 60]
       ] as const;
 
       it.each(minuteCases)('parses "%s" to %i', (input, expected) => {
