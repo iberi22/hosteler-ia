@@ -1,7 +1,11 @@
+// cspHashes.mjs — utilidades de CSP para el build.
+// Este modulo es puro y vive aparte de gen-csp-headers.mjs para que los
+// tests lo puedan importar y verificar sin los efectos colaterales de lectura de dist/.
 import { createHash } from 'node:crypto';
 
 export const sha256 = (texto) => `sha256-${createHash('sha256').update(texto, 'utf8').digest('base64')}`;
 
+/** Hashes de los scripts y estilos inline que esta pagina lleva de verdad (sin comillas). */
 export function hashesInline(html) {
   const scripts = new Set();
   const estilos = new Set();

@@ -33,7 +33,7 @@ describe('cspHashes.mjs', () => {
 
   it('4. Un script cuyo cuerpo contiene <!-- dentro de un string de JS se hashea completo', () => {
     const cuerpo = 'const x = "<!-- y"; console.log(x);';
-    const html = `<script>${cuerpo}</script>`;
+    const html = `<script>${cuerpo}</script><!-- fin -->`;
     const { scripts, estilos } = hashesInline(html);
     expect(scripts.size).toBe(1);
     expect(scripts.has(computeSha256(cuerpo))).toBe(true);
