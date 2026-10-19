@@ -58,7 +58,7 @@
     e.preventDefault();
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      importMsg = { ok: false, text: 'El archivo es demasiado grande (más de 5 MB).' };
+      importMsg = { ok: false, text: 'El archivo es demasiado grande (más de 5 MB).' }
       return;
     }
 
@@ -73,7 +73,7 @@
           const peek = JSON.parse(text);
           if (peek.format === 'swal-inventory-export-enc/v1') {
             isEncrypted = true;
-            importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' };
+            importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' }
             importing = false;
             return;
           }
@@ -81,13 +81,13 @@
       }
 
       snapshot = await openInventorySnapshot(text, isEncrypted ? importPassphrase : undefined);
-      importMsg = { ok: true, text: 'Inventario cargado correctamente. Solo lectura.' };
+      importMsg = { ok: true, text: 'Inventario cargado correctamente. Solo lectura.' }
     } catch (err) {
       if (err instanceof InventoryExportError && err.kind === 'clave' && !isEncrypted) {
         isEncrypted = true;
-        importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' };
+        importMsg = { ok: false, text: 'El archivo está cifrado. Escribe la clave.' }
       } else {
-        importMsg = { ok: false, text: errorText(err) };
+        importMsg = { ok: false, text: errorText(err) }
       }
       snapshot = null;
     } finally {
@@ -95,9 +95,7 @@
     }
   }
 
-  ${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
-    return `fize-inventario-${ymd}.${plain ? 'json' : 'fize'}`;
-  }
+
 
   function downloadFile(content: BlobPart, filename: string, type: string) {
     const blob = new Blob([content], { type });
@@ -119,7 +117,7 @@
     try {
       const identity = await loadIdentity();
       if (!identity) throw new Error('No hay local en este equipo.');
-      const storage = await getIdbAdapter();
+      const storage = getIdbAdapter();
       const rawSnap = await buildInventorySnapshot(storage, identity.instanceId);
       if (exportPlain) {
         const text = JSON.stringify(rawSnap, null, 2);
@@ -130,20 +128,16 @@
         downloadFile(text, inventoryExportFilename(identity.instanceId), 'application/octet-stream');
       }
 
-      exportMsg = { ok: true, text: 'Inventario exportado correctamente.' };
+      exportMsg = { ok: true, text: 'Inventario exportado correctamente.' }
       exportPassphrase1 = '';
       exportPassphrase2 = '';
       exportPlain = false;
     } catch (err) {
       if (err instanceof LockedError) {
-        exportMsg = { ok: false, text: 'Tu local está bloqueado. Desbloquéalo primero.' };
+        exportMsg = { ok: false, text: 'Tu local está bloqueado. Desbloquéalo primero.' }
       } else {
-        exportMsg = { ok: false, text: 'Error al exportar el inventario. Inténtalo de nuevo.' };
+        exportMsg = { ok: false, text: 'Error al exportar el inventario. Inténtalo de nuevo.' }
       }
-    } finally {
-      exporting = false;
-    }
-  };
     } finally {
       exporting = false;
     }
@@ -311,6 +305,5 @@
 
   .low-stock td { background: var(--swal-danger-muted, rgba(220, 38, 38, 0.1)); }
   .alert-badge { background: var(--swal-danger); color: white; border: none; margin-left: 0.5rem; font-size: 0.65rem; }
-</style>
-
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
+</style>
