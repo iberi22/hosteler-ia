@@ -24,16 +24,17 @@ const row = (id: string, instance = 'local-abc', business: Record<string, unknow
 describe('rowCrypto: filas', () => {
   it('cifra los campos de negocio y deja id/instance_id en claro', async () => {
     const dek = await newDek();
-    const sealed = await encryptRow('order', row('o1', 'local-abc', { total: 22000, note: 'sin sal' }), dek);
+    // Marcador largo e improbable: subcadenas cortas (p.ej. '22000') pueden aparecer por azar en base64.
+    const MARKER = 'rowcrypto-secret-marker-9d41';
+    const sealed = await encryptRow('order', row('o1', 'local-abc', { total: 22000, note: MARKER }), dek);
 
     expect(sealed.id).toBe('o1');
     expect(sealed.instance_id).toBe('local-abc');
     expect(isEncryptedBlob(sealed)).toBe(true);
-    expect(JSON.stringify(sealed)).not.toContain('22000');
-    expect(JSON.stringify(sealed)).not.toContain('sin sal');
+    expect(JSON.stringify(sealed)).not.toContain(MARKER);
 
     const opened = await decryptRow('order', sealed, dek);
-    expect(opened).toMatchObject({ id: 'o1', instance_id: 'local-abc', total: 22000, note: 'sin sal' });
+    expect(opened).toMatchObject({ id: 'o1', instance_id: 'local-abc', total: 22000, note: MARKER });
   });
 
   it('una fila sin campos de negocio tambien queda con sobre', async () => {
