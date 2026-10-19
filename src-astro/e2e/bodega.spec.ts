@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { sealInventorySnapshot, type PlainInventorySnapshot } from '../src/lib/inventoryExport';
 
@@ -36,32 +37,89 @@ async function gotoBodega(page: Page) {
   await expect(page.getByRole('heading', { name: 'Bodega' })).toBeVisible();
 }
 
+// Volcado de todas las bases y de todos los object stores con sus registros.
+async function dumpIndexedDb(page: Page): Promise<Record<string, Record<string, unknown[]>>> {
+  return page.evaluate(async () => {
+    const open = (name: string) =>
+      new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open(name);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    const out: Record<string, Record<string, unknown[]>> = {};
+    for (const info of await indexedDB.databases()) {
+      if (!info.name) continue;
+      const db = await open(info.name);
+      const dump: Record<string, unknown[]> = {};
+      for (const store of Array.from(db.objectStoreNames)) {
+        dump[store] = await new Promise<unknown[]>((resolve, reject) => {
+          const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+      db.close();
+      out[info.name] = dump;
+    }
+    return out;
+  });
+}
+
+// instanceId real del equipo (identidad en `fize-local`, ver e2e/local-polish.spec.ts).
+async function readInstanceId(page: Page): Promise<string> {
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('fize-local');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const identity = await new Promise<{ instanceId: string }>((resolve, reject) => {
+      const req = db.transaction('kv').objectStore('kv').get('identity');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return identity.instanceId;
+  });
+}
+
+// Siembra articulos de inventario en `fize-db`; cada registro lleva su propio instance_id.
+async function seedInventoryItems(page: Page, items: Record<string, unknown>[]) {
+  await page.evaluate(async (items) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open('fize-db');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('inventoryItem', 'readwrite');
+      for (const item of items) tx.objectStore('inventoryItem').put(item);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, items);
+}
+
 test.describe('Bodega read-only inventory', () => {
   test('loads a plain snapshot, displays data, and does not make network requests or save to IDB', async ({ page }) => {
-    // We stay online but track requests to ensure no calls reach external or cloud APIs.
-    let externalReqCount = 0;
-
-    // Parse origin from baseURL (like http://localhost:4331 or the preview url)
-    const origin = (page.context() as any)._options?.baseURL
-      ? new URL((page.context() as any)._options.baseURL).origin
-      : 'http://localhost:4331';
-
-    page.on('request', (req) => {
-      const url = req.url();
-      // Ignore same-origin
-      if (!url.startsWith(origin) && !url.includes('127.0.0.1')) {
-        externalReqCount++;
-      }
-    });
+    // Solo el origen exacto de la app esta permitido. 127.0.0.1 (p. ej. Xavier) NO es una excepcion:
+    // la CSP lo permite, por eso el test tiene que detectarlo.
+    const appOrigin = new URL(test.info().project.use.baseURL ?? 'http://localhost:4331').origin;
+    const offOrigin: string[] = [];
+    const record = (url: string) => {
+      if (!/^https?:/.test(url)) return;
+      if (new URL(url).origin !== appOrigin) offOrigin.push(url);
+    };
+    // 'requestfailed' tambien: una peticion bloqueada por la CSP puede no emitir 'request'.
+    page.on('request', (req) => record(req.url()));
+    page.on('requestfailed', (req) => record(req.url()));
 
     await onboardLocal(page);
     await gotoBodega(page);
 
-    // Take snapshot of IDB databases before
-    const dbsBefore = await page.evaluate(async () => {
-      const databases = await indexedDB.databases();
-      return databases.map(db => db.name).sort();
-    });
+    // Volcado de contenido antes de abrir el archivo (no solo nombres de bases).
+    const dbsBefore = await dumpIndexedDb(page);
 
     // Load file with locator().setInputFiles
     const fileBuffer = Buffer.from(JSON.stringify(mockSnapshot));
@@ -95,14 +153,12 @@ test.describe('Bodega read-only inventory', () => {
     await expect(page.getByText('Harina')).toBeVisible();
     await expect(page.getByText('Azúcar')).not.toBeVisible();
 
-    // Verify it didn't write any new database
-    const dbsAfter = await page.evaluate(async () => {
-      const databases = await indexedDB.databases();
-      return databases.map(db => db.name).sort();
-    });
-
+    // No escribio nada en IndexedDB: ni bases nuevas ni registros nuevos en las existentes.
+    const dbsAfter = await dumpIndexedDb(page);
+    expect(Object.keys(dbsAfter).sort()).toEqual(Object.keys(dbsBefore).sort());
     expect(dbsAfter).toEqual(dbsBefore);
-    expect(externalReqCount).toBe(0);
+
+    expect(offOrigin).toEqual([]);
   });
 
   test('loads an encrypted snapshot after entering the passphrase', async ({ page }) => {
@@ -151,11 +207,17 @@ test.describe('Bodega read-only inventory', () => {
     await expect(page.locator('tbody tr')).toHaveCount(0);
   });
 
-  test('exports the local inventory as a downloadable file with the correct name', async ({ page }) => {
+  test('exports the local inventory with its items and the local instanceId', async ({ page }) => {
     await onboardLocal(page);
+    const instanceId = await readInstanceId(page);
+    // Un articulo del local y otro de un local ajeno: solo el primero debe salir en el archivo.
+    await seedInventoryItems(page, [
+      { id: 'inv-e2e-local', instance_id: instanceId, name: 'Arroz E2E', stock: 7, unit: 'kg', minStock: 2, unitCost: 1500 },
+      { id: 'inv-e2e-ajeno', instance_id: 'otro-local-e2e', name: 'Ajeno E2E', stock: 99, unit: 'kg', minStock: 0, unitCost: 1 },
+    ]);
     await gotoBodega(page);
 
-    // Plain export avoids the passphrase-confirm dance; we assert the button works and the filename.
+    // Plain export avoids the passphrase-confirm dance.
     await page.getByLabel('Sin cifrar (el archivo se podrá leer sin clave)').check();
 
     const downloadPromise = page.waitForEvent('download');
@@ -164,5 +226,10 @@ test.describe('Bodega read-only inventory', () => {
 
     expect(download.suggestedFilename()).toMatch(/^fize-inventario-\d{4}-\d{2}-\d{2}\.swal-inventory\.json$/);
     await expect(page.getByText('Inventario exportado correctamente.')).toBeVisible();
+
+    const exported = JSON.parse(readFileSync(await download.path(), 'utf8')) as PlainInventorySnapshot;
+    expect(exported.source.instanceId).toBe(instanceId);
+    expect(exported.items.map((i) => i.name)).toEqual(['Arroz E2E']);
+    expect(exported.items[0].quantity).toBe(7);
   });
 });
