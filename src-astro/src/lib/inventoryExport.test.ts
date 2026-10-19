@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMemoryAdapter } from './domain';
 import { appendTx } from './inventoryLedger';
 import {
@@ -607,50 +607,40 @@ describe('Inventory Export', () => {
       expect(err.kind).toBe('alterado');
     });
 
-    it('(d) Un sobre sellado en Fize (check sobre fmt|salt|iv) todavía abre', async () => {
+    it('(d) Un sobre sellado en Fize emite el check fmt|salt|iv y sigue abriendo (deep equality)', async () => {
       await seedData();
       const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
       const enc = await sealInventorySnapshot(snap, 'secreta');
 
-      const opened = await openInventorySnapshot(enc, 'secreta');
-      expect(opened.items).toHaveLength(snap.items.length);
-    });
-
-    it('(e) sealInventorySnapshot todavía emite la forma fmt|salt|iv (Fize)', async () => {
-      await seedData();
-      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
-      const enc = await sealInventorySnapshot(snap, 'secreta');
-
+      // El sello Fize emite EXACTAMENTE la forma fmt|salt|iv, no la GARA fmt|salt.
       const expectedFizeCheck = await buildFizeCheck(enc, 'secreta');
       const garaCheck = await buildGaraCheck(enc, 'secreta');
-      expect(enc.check).toBe(expectedFizeCheck);
-      expect(enc.check).not.toBe(garaCheck);
+      expect(enc.check).toEqual(expectedFizeCheck);
+      expect(enc.check).not.toEqual(garaCheck);
+
+      // Y sigue abriendo con igualdad profunda (toEqual, no solo truthy/length).
+      const opened = await openInventorySnapshot(enc, 'secreta');
+      expect(opened).toEqual(snap);
     });
 
-    it('(f) el open usa EXACTAMENTE 2 llamadas a sign HMAC siempre (Fize y GARA), previniendo saltos/short-circuit', async () => {
+    it('(e) el open calcula EXACTAMENTE los dos HMAC fmt|salt y fmt|salt|iv (sin short-circuit; espía con toEqual)', async () => {
       await seedData();
       const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
-      const encFize = await sealInventorySnapshot(snap, 'secreta');
-
-      const garaCheck = await buildGaraCheck(encFize, 'secreta');
-      const encGara = { ...encFize, check: garaCheck };
+      const enc = await sealInventorySnapshot(snap, 'secreta'); // forma Fize (check=fmt|salt|iv)
 
       const spy = vi.spyOn(crypto.subtle, 'sign');
+      await openInventorySnapshot(enc, 'secreta');
 
-      // Abre un Fize file
-      spy.mockClear();
-      await openInventorySnapshot(encFize, 'secreta');
-      // Las llamadas a deriveKeys internamente no usan HMAC sign directamente para KDF,
-      // pero si lo usaran se verían aqui. Asumiendo que es derivación nativa, sign solo se
-      // llama en las comprobaciones (2)
-      const callsFize = spy.mock.calls.filter(call => call[0] === 'HMAC');
-      expect(callsFize).toHaveLength(2);
+      const payloads = spy.mock.calls
+        .filter((call) => call[0] === 'HMAC')
+        .map((call) => new TextDecoder().decode(call[2] as ArrayBufferView));
+      spy.mockRestore();
 
-      // Abre un GARA file
-      spy.mockClear();
-      await openInventorySnapshot(encGara, 'secreta');
-      const callsGara = spy.mock.calls.filter(call => call[0] === 'HMAC');
-      expect(callsGara).toHaveLength(2);
+      const expectedFize = `swal-inventory-export-enc/v1|${enc.salt}|${enc.iv}`;
+      const expectedGara = `swal-inventory-export-enc/v1|${enc.salt}`;
+      // Afirma los DOS payloads distintos exactos (no un count/truthy). Si el código
+      // firmara el mismo payload dos veces, o hiciera short-circuit, esto falla.
+      expect([...payloads].sort()).toEqual([expectedFize, expectedGara].sort());
     });
   });
 });
