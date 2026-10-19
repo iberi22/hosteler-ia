@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { detectLocalAiTier, promptApiState, rulesRecommendations, localInfer, type PromptApiLike } from './localAi';
+import { detectLocalAiTier, promptApiState, rulesRecommendations, localInfer, localInferWithTier, type PromptApiLike } from './localAi';
 import { parseRecommendations } from './recommendations';
 
 describe('localAi', () => {
@@ -205,6 +205,41 @@ Top ventas: F x3`;
       const parsed = parseRecommendations(response);
       expect(parsed[0].type).toBe('ops');
       expect(session.destroy).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('localInferWithTier', () => {
+    it('returns prompt-api tier when readily and prompt succeeds', async () => {
+      const session = {
+        prompt: vi.fn().mockResolvedValue(JSON.stringify([{ type: 'promo', title: 'Test', detail: 'Test' }])),
+        destroy: vi.fn(),
+      };
+      const languageModel = {
+        availability: vi.fn().mockResolvedValue('readily'),
+        create: vi.fn().mockResolvedValue(session),
+      } as unknown as PromptApiLike;
+
+      const prompt = 'test prompt\nDevuelve JSON: array de {type: restock|promo|menu|ops, title, detail} (máx 5, español).';
+      const result = await localInferWithTier(prompt, { languageModel });
+      expect(result.tier).toBe('prompt-api');
+      const parsed = parseRecommendations(result.text);
+      expect(parsed[0].title).toBe('Test');
+    });
+
+    it('returns rules tier when engine prompt rejects', async () => {
+      const session = {
+        prompt: vi.fn().mockRejectedValue(new Error('fail')),
+        destroy: vi.fn(),
+      };
+      const languageModel = {
+        availability: vi.fn().mockResolvedValue('readily'),
+        create: vi.fn().mockResolvedValue(session),
+      } as unknown as PromptApiLike;
+      const prompt = `Stock bajo: ninguno\nTop ventas: sin datos`;
+      const result = await localInferWithTier(prompt, { languageModel });
+      expect(result.tier).toBe('rules');
+      const parsed = parseRecommendations(result.text);
+      expect(parsed[0].type).toBe('ops');
     });
   });
 });
