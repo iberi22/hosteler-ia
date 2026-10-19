@@ -6,7 +6,7 @@ import { domainConfig } from '../domain.config';
 describe('Local Panel Static Checks', () => {
   const root = path.resolve(import.meta.dirname, '..', '..', '..');
   
-  it('pages inventario, compras, recetas, analitica exist and do not use AI components', () => {
+  it('pages inventario, compras, recetas, analitica exist; only inventario mounts the recommendation panel', () => {
     const pages = ['inventario.astro', 'compras.astro', 'recetas.astro', 'analitica.astro'];
     
     pages.forEach(page => {

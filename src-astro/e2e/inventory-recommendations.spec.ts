@@ -92,4 +92,34 @@ test.describe('Inventory Recommendations (Local Mode)', () => {
     await page.goto('/local/');
     await expect(page.getByRole('button', { name: 'Empezar' })).toBeVisible();
   });
+
+  test('cloud dashboard does not read the local node even when a local restaurant with low stock exists', async ({ page, request, context, baseURL }) => {
+    // 1. Onboarding local y un artículo con stock bajo en el IndexedDB de este equipo
+    await onboardLocal(page);
+    await page.goto('/local/inventario/');
+    await expect(page.locator('h1.page-title', { hasText: 'Inventario' })).toBeVisible();
+    await page.getByLabel('Nombre *').fill('Tomates Locales');
+    await page.getByLabel('Unidad *').fill('kg');
+    await page.getByLabel('Stock inicial').fill('1');
+    await page.getByLabel('Stock mínimo').fill('10');
+    await page.getByRole('button', { name: 'Crear Producto' }).click();
+    await expect(page.getByText('Producto creado con éxito.')).toBeVisible();
+
+    // 2. Entrar como staff al dashboard de nube en el mismo navegador
+    const cookie = await staffCookie(request);
+    await context.addCookies([{
+      name: 'fize_session',
+      value: cookie.slice(cookie.indexOf('=') + 1),
+      url: baseURL ?? 'http://localhost:4331',
+    }]);
+    await page.goto('/dashboard/inventory');
+    await expect(page.locator('h1.page-title', { hasText: 'Inventario' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    // 3. El panel y la etiqueta de tier NO aparecen: el nodo local no alimenta el inventario de nube
+    const panel = page.locator('section[aria-label="Recomendaciones Fi\'ze"]');
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId('ai-tier')).toBeHidden();
+    await expect(page.getByText('Reponer Tomates Locales')).toHaveCount(0);
+  });
 });
