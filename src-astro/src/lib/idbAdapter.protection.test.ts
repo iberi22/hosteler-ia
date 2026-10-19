@@ -124,19 +124,21 @@ describe('outbox y shares con la proteccion activa', () => {
     const instance = 'local-outbox';
     await enableProtection('pin', PIN, undefined, FAST);
 
-    await enqueueMutation('order', 'create', record('o1', instance, { total: 33000 }), instance);
+    const MARKER = 'outbox-secret-marker-2c8e';
+    await enqueueMutation('order', 'create', record('o1', instance, { total: 33000, note: MARKER }), instance);
 
     const raw = (await (await outboxDb()).getAll(OUTBOX_STORE))[0];
     expect(isEncryptedBlob(raw.record)).toBe(true);
-    expect(JSON.stringify(raw)).not.toContain('33000');
+    expect(JSON.stringify(raw)).not.toContain(MARKER);
 
     const pending = await pendingMutations();
     expect(pending[0].record.total).toBe(33000);
+    expect(pending[0].record.note).toBe(MARKER);
 
     lock();
     expect(await pendingMutations()).toEqual([]);
     await unlock('pin', PIN, undefined, FAST);
-    expect((await pendingMutations())[0].record.total).toBe(33000);
+    expect((await pendingMutations())[0].record.note).toBe(MARKER);
     await disableProtection();
   });
 
@@ -145,18 +147,20 @@ describe('outbox y shares con la proteccion activa', () => {
     await enableProtection('pin', PIN, undefined, FAST);
     const store = createIdbDeviceShareStore();
 
-    await store.save(instance, { device: { blobs: 'x1' }, recovery: { blobs: 'x2' } });
+    // Marcador largo e improbable: una subcadena corta (p.ej. 'x2') aparece por azar en base64 aleatorio.
+    const MARKER = 'recovery-secret-marker-7f3a';
+    await store.save(instance, { device: { blobs: 'device-share-value' }, recovery: { blobs: MARKER } });
 
     const raw = await (await sharesDb()).get(SHARES_STORE, instance);
     expect(isEncryptedBlob(raw)).toBe(true);
-    expect(JSON.stringify(raw)).not.toContain('x2');
+    expect(JSON.stringify(raw)).not.toContain(MARKER);
 
-    expect(await store.load(instance)).toEqual({ device: { blobs: 'x1' }, recovery: { blobs: 'x2' } });
+    expect(await store.load(instance)).toEqual({ device: { blobs: 'device-share-value' }, recovery: { blobs: MARKER } });
 
     lock();
     await expect(store.load(instance)).rejects.toBeInstanceOf(LockedError);
     await unlock('pin', PIN, undefined, FAST);
-    expect((await store.load(instance))?.device).toEqual({ blobs: 'x1' });
+    expect((await store.load(instance))?.device).toEqual({ blobs: 'device-share-value' });
     await disableProtection();
   });
 });
