@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { getMemoryAdapter } from './domain';
 import { appendTx } from './inventoryLedger';
 import {
@@ -17,6 +17,7 @@ import {
 describe('Inventory Export', () => {
   beforeEach(() => {
     getMemoryAdapter().clear();
+    vi.restoreAllMocks();
   });
 
   const seedData = async (instanceId = 'default', suffix = '') => {
@@ -558,7 +559,7 @@ describe('Inventory Export', () => {
       const garaEnc = { ...enc, check: garaCheck };
 
       const opened = await openInventorySnapshot(garaEnc, 'secreta');
-      expect(opened.items).toHaveLength(snap.items.length);
+      expect(opened).toEqual(snap);
     });
 
     it('(b) Un sobre estilo GARA con passphrase incorrecta da "clave"', async () => {
@@ -581,9 +582,25 @@ describe('Inventory Export', () => {
 
       const garaCheck = await buildGaraCheck(enc, 'secreta');
 
-      const bin = atob(enc.ciphertext);
+      // Use the actual payload modifications from the test
+      const tamperedEnc = { ...enc, check: garaCheck, ciphertext: enc.ciphertext.replace('A', 'B') };
+
+      const err = await catchError(openInventorySnapshot(tamperedEnc, 'secreta'));
+      expect(err).toBeInstanceOf(InventoryExportError);
+      expect(err.kind).toBe('alterado');
+    });
+
+    it('(c2) Un sobre estilo GARA con iv alterado y passphrase correcta da "alterado"', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const enc = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
+
+      // Use actual iv mutation
+      const bin = atob(enc.iv);
       const modifiedBin = String.fromCharCode(bin.charCodeAt(0) ^ 1) + bin.substring(1);
-      const tamperedEnc = { ...enc, check: garaCheck, ciphertext: btoa(modifiedBin) };
+      const tamperedEnc = { ...enc, check: garaCheck, iv: btoa(modifiedBin) };
 
       const err = await catchError(openInventorySnapshot(tamperedEnc, 'secreta'));
       expect(err).toBeInstanceOf(InventoryExportError);
@@ -605,7 +622,35 @@ describe('Inventory Export', () => {
       const enc = await sealInventorySnapshot(snap, 'secreta');
 
       const expectedFizeCheck = await buildFizeCheck(enc, 'secreta');
+      const garaCheck = await buildGaraCheck(enc, 'secreta');
       expect(enc.check).toBe(expectedFizeCheck);
+      expect(enc.check).not.toBe(garaCheck);
+    });
+
+    it('(f) el open usa EXACTAMENTE 2 llamadas a sign HMAC siempre (Fize y GARA), previniendo saltos/short-circuit', async () => {
+      await seedData();
+      const snap = await buildInventorySnapshot(getMemoryAdapter(), 'default');
+      const encFize = await sealInventorySnapshot(snap, 'secreta');
+
+      const garaCheck = await buildGaraCheck(encFize, 'secreta');
+      const encGara = { ...encFize, check: garaCheck };
+
+      const spy = vi.spyOn(crypto.subtle, 'sign');
+
+      // Abre un Fize file
+      spy.mockClear();
+      await openInventorySnapshot(encFize, 'secreta');
+      // Las llamadas a deriveKeys internamente no usan HMAC sign directamente para KDF,
+      // pero si lo usaran se verían aqui. Asumiendo que es derivación nativa, sign solo se
+      // llama en las comprobaciones (2)
+      const callsFize = spy.mock.calls.filter(call => call[0] === 'HMAC');
+      expect(callsFize).toHaveLength(2);
+
+      // Abre un GARA file
+      spy.mockClear();
+      await openInventorySnapshot(encGara, 'secreta');
+      const callsGara = spy.mock.calls.filter(call => call[0] === 'HMAC');
+      expect(callsGara).toHaveLength(2);
     });
   });
 });
