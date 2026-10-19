@@ -90,7 +90,12 @@ export function rulesRecommendations(prompt: string): string {
   return JSON.stringify(recommendations.slice(0, 5));
 }
 
-export async function localInfer(prompt: string, env: LocalAiEnvironment = localAiEnvironment()): Promise<string> {
+export interface LocalInferResult {
+  text: string;
+  tier: LocalAiTier;
+}
+
+export async function localInferWithTier(prompt: string, env: LocalAiEnvironment = localAiEnvironment()): Promise<LocalInferResult> {
   const tier = await detectLocalAiTier(env);
   if (tier === 'prompt-api' && env.languageModel) {
     let session;
@@ -100,7 +105,7 @@ export async function localInfer(prompt: string, env: LocalAiEnvironment = local
       session = await env.languageModel.create({ systemPrompt });
       const response = await session.prompt(prompt);
       if (response) {
-        return response;
+        return { text: response, tier: 'prompt-api' };
       }
     } catch {
       // fallback to rules on rejection
@@ -110,5 +115,10 @@ export async function localInfer(prompt: string, env: LocalAiEnvironment = local
       }
     }
   }
-  return rulesRecommendations(prompt);
+  return { text: rulesRecommendations(prompt), tier: 'rules' };
+}
+
+export async function localInfer(prompt: string, env: LocalAiEnvironment = localAiEnvironment()): Promise<string> {
+  const result = await localInferWithTier(prompt, env);
+  return result.text;
 }
