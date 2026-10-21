@@ -14,7 +14,7 @@
   } from '../../stores/orders.svelte';
   import { meshSubscribe, meshPublish } from '../../lib/mesh';
   import { api } from '../../lib/api-client';
-  import { createKitchenPoller } from './kitchenPolling';
+  import { setupKitchenPolling } from './kitchenPolling';
   import { isLocalMode } from '../../lib/local/localMode';
   import { isOrderStatus, ORDER_STATUS_BADGE_LABELS, ORDER_STATUS_LABELS } from '../../lib/orderStateMachine';
   import { shouldSeedKdsDemo, isDemoFlaggedUrl } from '../../lib/kdsAutoSeed';
@@ -26,7 +26,8 @@
   let { autoPublish = true, statuses }: { autoPublish?: boolean; statuses?: OrderStatus[] } = $props();
 
   let unsub: (() => void) | null = null;
-  let poller: ReturnType<typeof createKitchenPoller> | null = null;
+  let polling: ReturnType<typeof setupKitchenPolling> = null;
+  let destroyed = false;
   let lastSignature = '';
   let demoNotice = $state<string>('');
 
@@ -150,13 +151,6 @@
     }
   }
 
-  function onVisibility() {
-    poller?.onVisibilityChange();
-  }
-  function onUserAction() {
-    poller?.reset();
-  }
-
   onMount(async () => {
     hydrateOrders();
     pushLog(`[cocina] ${orders.list.length} pedidos cargados de este equipo`);
@@ -189,11 +183,8 @@
     // vacio (EMPTY_LABELS) y cero escrituras en la base del restaurante.
     await pollBackend();
     await loadTables();
-    poller = createKitchenPoller({ poll: pollBackend });
-    poller.start();
-    document.addEventListener('visibilitychange', onVisibility);
-    document.addEventListener('pointerdown', onUserAction);
-    document.addEventListener('keydown', onUserAction);
+    polling = setupKitchenPolling({ poll: pollBackend, isDestroyed: () => destroyed });
+    if (!polling) return;
 
     // Demo del KDS. Servidor (/dashboard/kitchen): fantasmas en memoria de
     // siempre. Local (/local/*): SOLO con `?demo=1` explicito, y entonces por
@@ -229,13 +220,10 @@
   });
 
   onDestroy(() => {
+    destroyed = true;
     unsub?.();
-    poller?.stop();
-    if (typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', onVisibility);
-      document.removeEventListener('pointerdown', onUserAction);
-      document.removeEventListener('keydown', onUserAction);
-    }
+    polling?.dispose();
+    polling = null;
   });
 
   /**
