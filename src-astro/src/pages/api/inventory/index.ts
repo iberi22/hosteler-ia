@@ -4,6 +4,7 @@ import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
 import { appendTx } from '../../../lib/inventoryLedger';
 import { requireRole } from '../../../lib/auth/requireRole';
+import { stripCosts } from '../../../lib/auth/stripCosts';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createItemSchema = z.object({
@@ -29,7 +30,7 @@ function genId(): string {
 
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
-    requireRole(locals, ['owner', 'caja', 'cocina']);
+    const user = requireRole(locals, ['owner', 'caja', 'cocina']);
     const url = new URL(request.url);
     const instanceId = await resolveRequestTenant(locals, request);
     const lowStockParam = url.searchParams.get('lowStock');
@@ -51,7 +52,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
       return true;
     });
 
-    return new Response(JSON.stringify(active), {
+    return new Response(JSON.stringify(stripCosts(user.role, active)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

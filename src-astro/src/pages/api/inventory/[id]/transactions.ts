@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
 import { isTxKind, appendTx, txHistory, type TxKind } from '../../../../lib/inventoryLedger';
 import { requireRole } from '../../../../lib/auth/requireRole';
+import { stripCosts } from '../../../../lib/auth/stripCosts';
 import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 const txSchema = z.object({
@@ -14,7 +15,7 @@ const txSchema = z.object({
 // GET historial inmutable · POST nuevo movimiento (stock se recalcula solo)
 export const GET: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireRole(locals, ['owner', 'caja', 'cocina']);
+    const user = requireRole(locals, ['owner', 'caja', 'cocina']);
     const { id } = params;
     if (!id) {
       return new Response(JSON.stringify({ error: 'Item ID required' }), {
@@ -37,7 +38,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
     const history = await txHistory(adapter, instanceId, id);
 
-    return new Response(JSON.stringify(history), {
+    return new Response(JSON.stringify(stripCosts(user.role, history)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

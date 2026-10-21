@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import { requireRole } from '../../../lib/auth/requireRole';
+import { stripCosts } from '../../../lib/auth/stripCosts';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const updateItemSchema = z.object({
@@ -24,7 +25,7 @@ const notFound = () =>
 
 export const GET: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireRole(locals, ['owner', 'caja', 'cocina']);
+    const user = requireRole(locals, ['owner', 'caja', 'cocina']);
     const { id } = params;
     if (!id) {
       return new Response(JSON.stringify({ error: 'Item ID required' }), {
@@ -38,7 +39,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
     if (isGone(record)) return notFound();
 
-    return new Response(JSON.stringify(record), {
+    return new Response(JSON.stringify(stripCosts(user.role, record)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

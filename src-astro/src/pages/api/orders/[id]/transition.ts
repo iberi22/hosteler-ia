@@ -32,10 +32,20 @@ const transitionSchema = z.object({
   to: z.string().min(1, { message: 'Target status is required' }),
 });
 
+const ALL_ROLES = ['owner', 'caja', 'staff', 'cocina'];
+const TARGET_ROLES: Record<string, string[]> = {
+  preparing: ['owner', 'staff', 'cocina'],
+  ready: ['owner', 'staff', 'cocina'],
+  served: ['owner', 'staff'],
+  cancelled: ['owner', 'caja', 'staff'],
+  paid: ['owner', 'caja'],
+};
+
 // POST /api/orders/[id]/transition { to } — único camino válido para cambiar status
 export const POST: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireRole(locals, ['owner', 'staff', 'cocina']);
+    // Chequeo barato: rol desconocido -> 403 antes de leer el cuerpo. El rol exacto depende del destino.
+    requireRole(locals, ALL_ROLES);
     // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 
@@ -70,6 +80,9 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
         },
       );
     }
+
+    // Permisos por estado destino (ALCANCE §6.2): cocina no cancela, solo owner/caja cobran.
+    requireRole(locals, TARGET_ROLES[validation.data.to] ?? ALL_ROLES);
 
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
