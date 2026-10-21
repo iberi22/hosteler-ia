@@ -6,8 +6,10 @@ const text = src.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
 describe('privacidad.astro (Ley 1581 de 2012, Decreto 1377 de 2013)', () => {
   it('responsable: domicilio y telefono como TODO-OWNER', () => {
-    expect(text).toMatch(/TODO-OWNER: [^<]*domicilio/i);
-    expect(text).toMatch(/TODO-OWNER: [^<]*tel[eé]fono/i);
+    // Assert against raw src: stripped text has no tag boundaries, so [^<]* could
+    // match a later 'domicilio'/'telefono' anywhere on the page.
+    expect(src).toMatch(/Domicilio:\s*<span class="todo">TODO-OWNER:[^<]*domicilio/i);
+    expect(src).toMatch(/Tel[eé]fono:\s*<span class="todo">TODO-OWNER:[^<]*tel[eé]fono/i);
     expect(text).toMatch(/TODO-OWNER: raz[oó]n social y NIT/);
     expect(text).toMatch(/TODO-OWNER: correo de privacidad/);
   });
@@ -53,7 +55,7 @@ describe('privacidad.astro (Ley 1581 de 2012, Decreto 1377 de 2013)', () => {
     expect(text).toMatch(/Vigencia de la política/);
     expect(text).toContain('2026-10-21');
     expect(text).toMatch(/Vigencia de la base de datos/);
-    expect(text).toMatch(/TODO-OWNER: [^<]*vigencia de la base de datos/i);
+    expect(src).toMatch(/Vigencia de la base de datos:<\/strong>\s*<span class="todo">TODO-OWNER:[^<]*vigencia de la base de datos/i);
   });
 
   it('sin ARCO ni promesa de cifrado extremo a extremo', () => {
