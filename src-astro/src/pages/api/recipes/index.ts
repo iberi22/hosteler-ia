@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { requireSession } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
+import { stripCosts } from '../../../lib/auth/stripCosts';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 import {
   costPerServing,
@@ -46,7 +47,7 @@ const createSchema = z.object({
  */
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
-    requireSession(locals);
+    const user = requireRole(locals, ['owner', 'cocina']);
     // El tenant sale de la sesion; `?instance_id=` de otra instancia es 403 (ver lib/auth/tenant.ts).
     const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
@@ -65,7 +66,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
         lossMaking: price > 0 && cost >= price,
       };
     });
-    return json(rows, 200);
+    return json(stripCosts(user.role, rows), 200);
   } catch (err) {
     const authRes = authErrorResponse(err);
     if (authRes) return authRes;
@@ -82,7 +83,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
  */
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
     // Query o body con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
     let body: unknown;

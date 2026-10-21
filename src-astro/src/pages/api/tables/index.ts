@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
-import { requireSession } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createTableSchema = z.object({
@@ -23,6 +23,7 @@ async function qrExists(adapter: ReturnType<typeof createStorageAdapter>, qrCode
 
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
+    requireRole(locals, ['owner', 'caja', 'staff', 'cocina']);
     const instanceId = await resolveRequestTenant(locals, request);
 
     const adapter = createStorageAdapter(locals);
@@ -46,7 +47,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner', 'caja', 'staff']);
     // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 

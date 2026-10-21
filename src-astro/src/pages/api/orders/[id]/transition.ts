@@ -4,7 +4,7 @@ import { createStorageAdapter } from '../../../../lib/storageAdapter';
 import { isOrderStatus, assertTransition, type OrderStatus } from '../../../../lib/orderStateMachine';
 import { deductRecipe } from '../../../../lib/recipes';
 import type { StorageAdapter } from '../../../../lib/domain';
-import { requireSession } from '../../../../lib/auth/session';
+import { requireRole } from '../../../../lib/auth/requireRole';
 import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 async function deductOrderStock(
@@ -32,10 +32,20 @@ const transitionSchema = z.object({
   to: z.string().min(1, { message: 'Target status is required' }),
 });
 
+const ALL_ROLES = ['owner', 'caja', 'staff', 'cocina'];
+const TARGET_ROLES: Record<string, string[]> = {
+  preparing: ['owner', 'staff', 'cocina'],
+  ready: ['owner', 'staff', 'cocina'],
+  served: ['owner', 'staff'],
+  cancelled: ['owner', 'caja', 'staff'],
+  paid: ['owner', 'caja'],
+};
+
 // POST /api/orders/[id]/transition { to } — único camino válido para cambiar status
 export const POST: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireSession(locals);
+    // Chequeo barato: rol desconocido -> 403 antes de leer el cuerpo. El rol exacto depende del destino.
+    requireRole(locals, ALL_ROLES);
     // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 
@@ -71,6 +81,18 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
       );
     }
 
+    // Permisos por estado destino (ALCANCE §6.2): cocina no cancela, solo owner/caja cobran.
+    // Deny by default: solo destinos con regla propia (own property, no heredada de Object.prototype).
+    const to = validation.data.to;
+    const allowed = Object.hasOwn(TARGET_ROLES, to) ? TARGET_ROLES[to] : null;
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: `Invalid status: ${to}` }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    requireRole(locals, allowed);
+
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
 
@@ -82,7 +104,6 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
     }
 
     const from = existing.status as OrderStatus;
-    const to = validation.data.to;
 
     if (!isOrderStatus(from) || !isOrderStatus(to)) {
       return new Response(JSON.stringify({ error: `Invalid status: ${String(to)}` }), {

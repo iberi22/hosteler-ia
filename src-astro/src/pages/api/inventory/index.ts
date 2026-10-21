@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
 import type { DomainRecord } from '../../../lib/domain';
 import { appendTx } from '../../../lib/inventoryLedger';
-import { requireSession } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
+import { stripCosts } from '../../../lib/auth/stripCosts';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const createItemSchema = z.object({
@@ -29,6 +30,7 @@ function genId(): string {
 
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
+    const user = requireRole(locals, ['owner', 'caja', 'cocina']);
     const url = new URL(request.url);
     const instanceId = await resolveRequestTenant(locals, request);
     const lowStockParam = url.searchParams.get('lowStock');
@@ -50,7 +52,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
       return true;
     });
 
-    return new Response(JSON.stringify(active), {
+    return new Response(JSON.stringify(stripCosts(user.role, active)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -66,7 +68,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
     // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 

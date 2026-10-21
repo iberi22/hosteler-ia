@@ -27,7 +27,9 @@ test("onboards local, creates table 1, adds order and KDS shows Mesa 1", async (
 	await page.getByPlaceholder("Nº de Mesa").fill("1");
 	await page.getByPlaceholder("Capacidad (pax)").fill("4");
 	await page.getByRole("button", { name: "Añadir Mesa" }).click();
-	await expect(page.getByText('Mesa 1')).toBeVisible();
+	// exact: the empty state ("... primera mesa (Mesa 1)") also contains "Mesa 1" as a substring,
+	// so a loose match passed before the table was saved and the goto below cancelled the save.
+	await expect(page.getByText("Mesa 1", { exact: true })).toBeVisible();
 
 	// Create Order
 	await page.goto("/local/nuevo-pedido/");

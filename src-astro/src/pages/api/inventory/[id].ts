@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { requireSession } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
+import { stripCosts } from '../../../lib/auth/stripCosts';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 
 const updateItemSchema = z.object({
@@ -24,6 +25,7 @@ const notFound = () =>
 
 export const GET: APIRoute = async ({ params, request, locals }) => {
   try {
+    const user = requireRole(locals, ['owner', 'caja', 'cocina']);
     const { id } = params;
     if (!id) {
       return new Response(JSON.stringify({ error: 'Item ID required' }), {
@@ -37,7 +39,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
     if (isGone(record)) return notFound();
 
-    return new Response(JSON.stringify(record), {
+    return new Response(JSON.stringify(stripCosts(user.role, record)), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -53,7 +55,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 export const PATCH: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
     // Query o body (`instance_id`, que Zod descarta) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 
@@ -120,7 +122,7 @@ export const PATCH: APIRoute = async ({ params, request, locals }) => {
 
 export const DELETE: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
 
     const { id } = params;
     if (!id) {
