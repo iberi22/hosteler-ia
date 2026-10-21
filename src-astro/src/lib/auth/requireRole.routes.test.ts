@@ -199,3 +199,19 @@ describe('cost fields are owner-only in GET responses', () => {
     expect(JSON.stringify(await getJson(inventoryId, 'owner', { id: 'i-1' }))).toContain('"unitCost"');
   });
 });
+
+// Destinos desconocidos o heredados de Object.prototype (constructor, toString, __proto__)
+// o sin regla explicita (pending) deben responder 400, nunca 500 ni permitir por defecto.
+describe('orders/[id]/transition: unknown target status is denied', () => {
+  beforeEach(() => {
+    getMemoryAdapter().clear();
+  });
+  for (const to of ['constructor', 'toString', '__proto__', 'pending']) {
+    it(`to=${to}: owner gets 400, never 500`, async () => {
+      expect(await transition('owner', 'o-1', to)).toBe(400);
+    });
+    it(`to=${to}: anonymous gets 401`, async () => {
+      expect(await transition(null, 'o-1', to)).toBe(401);
+    });
+  }
+});

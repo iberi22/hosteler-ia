@@ -82,7 +82,16 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
     }
 
     // Permisos por estado destino (ALCANCE §6.2): cocina no cancela, solo owner/caja cobran.
-    requireRole(locals, TARGET_ROLES[validation.data.to] ?? ALL_ROLES);
+    // Deny by default: solo destinos con regla propia (own property, no heredada de Object.prototype).
+    const to = validation.data.to;
+    const allowed = Object.hasOwn(TARGET_ROLES, to) ? TARGET_ROLES[to] : null;
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: `Invalid status: ${to}` }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    requireRole(locals, allowed);
 
     const adapter = createStorageAdapter(locals);
     const existing = (await adapter.get('order', id, instanceId)) as Record<string, unknown> | null;
@@ -95,7 +104,6 @@ export const POST: APIRoute = async ({ params, request, locals }) => {
     }
 
     const from = existing.status as OrderStatus;
-    const to = validation.data.to;
 
     if (!isOrderStatus(from) || !isOrderStatus(to)) {
       return new Response(JSON.stringify({ error: `Invalid status: ${String(to)}` }), {
