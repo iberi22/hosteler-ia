@@ -6,7 +6,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
  *
  * Redactada de forma honesta: hoy SWAL puede leer los datos del restaurante
  * (el servidor los descifra para operar el servicio). No se promete cifrado
- * extremo a extremo. Los campos TODO-OWNER los completa el responsable antes
+ * de punta a punta. Los campos TODO-OWNER los completa el responsable antes
  * del lanzamiento publico.
  */
 export const prerender = true;
@@ -24,6 +24,8 @@ export const prerender = true;
     <h2>1. Responsable del tratamiento</h2>
     <p>
       SWAL (SouthWest AI Labs), <span class="todo">TODO-OWNER: razón social y NIT del responsable</span>.
+      Domicilio: <span class="todo">TODO-OWNER: domicilio / dirección del responsable</span>.
+      Teléfono: <span class="todo">TODO-OWNER: teléfono del responsable</span>.
       Contacto para temas de privacidad: <span class="todo">TODO-OWNER: correo de privacidad</span>.
     </p>
 
@@ -33,6 +35,15 @@ export const prerender = true;
       <li><strong>Datos del restaurante:</strong> carta, recetas, costos, inventario, mesas, pedidos y ventas que registra el equipo.</li>
       <li><strong>Datos técnicos:</strong> información necesaria para mantener la sesión y el funcionamiento de la aplicación en tu dispositivo.</li>
     </ul>
+
+    <h2>2.1 Datos de comensales</h2>
+    <p>
+      Cuando un comensal hace un pedido por código QR, paga en el checkout o recibe mensajes por WhatsApp, se tratan su
+      nombre, teléfono, mesa, contenido del pedido y estado del pago. La finalidad es tomar y preparar el pedido,
+      cobrarlo y avisar al comensal sobre su estado. Respecto de estos datos de comensales, el restaurante es el
+      responsable del tratamiento y SWAL actúa como encargado: los trata solo por cuenta del restaurante y siguiendo
+      sus instrucciones.
+    </p>
 
     <h2>3. Finalidades</h2>
     <ul>
@@ -46,14 +57,19 @@ export const prerender = true;
     <h2>4. Quién puede leer tus datos</h2>
     <p>
       Somos transparentes: hoy los datos de tu restaurante se guardan en servidores que SWAL opera, y SWAL puede leerlos
-      para prestar el servicio. No afirmamos que sean cifrados de extremo a extremo ni que ninguna persona pueda leerlos.
+      para prestar el servicio. No afirmamos que estén cifrados de modo que nadie, ni siquiera SWAL, pueda leerlos.
       Limitamos el acceso al personal que lo necesita para operar Fi'ze.
     </p>
 
     <h2>5. Encargados del tratamiento</h2>
     <p>
-      Usamos <strong>Cloudflare</strong> como encargado para alojar y entregar la aplicación y sus datos. Cloudflare
-      trata los datos siguiendo nuestras instrucciones.
+      Usamos <strong>Cloudflare, Inc.</strong> (Estados Unidos) como encargado para alojar y entregar la aplicación y
+      sus datos. Cloudflare trata los datos siguiendo nuestras instrucciones.
+    </p>
+    <p>
+      Esto implica una transmisión internacional de datos a un encargado ubicado fuera de Colombia. Como garantías,
+      exigimos a Cloudflare tratar los datos solo por nuestra cuenta, con medidas de seguridad adecuadas y deber de
+      confidencialidad, conforme al Decreto 1377 de 2013. No vendemos los datos a terceros.
     </p>
 
     <h2>6. Retención</h2>
@@ -63,18 +79,25 @@ export const prerender = true;
       Puedes pedir su supresión en los términos de la sección 7.
     </p>
 
-    <h2>7. Tus derechos (ARCO)</h2>
-    <p>Como titular de tus datos puedes ejercer los derechos de:</p>
+    <h2>7. Tus derechos como titular</h2>
+    <p>Según el artículo 8 de la Ley 1581 de 2012, como titular de tus datos tienes derecho a:</p>
     <ul>
-      <li><strong>Acceso:</strong> conocer qué datos tuyos tratamos.</li>
-      <li><strong>Rectificación:</strong> corregir datos inexactos o incompletos.</li>
-      <li><strong>Cancelación:</strong> pedir la supresión de tus datos cuando proceda.</li>
-      <li><strong>Oposición:</strong> oponerte a tratamientos que no sean necesarios para el servicio.</li>
-      <li><strong>Revocación:</strong> retirar la autorización otorgada, salvo que una obligación legal lo impida.</li>
+      <li>Conocer, actualizar y rectificar tus datos personales.</li>
+      <li>Solicitar prueba de la autorización otorgada para su tratamiento.</li>
+      <li>Ser informado, previa solicitud, del uso que se ha dado a tus datos.</li>
+      <li>Presentar quejas ante la Superintendencia de Industria y Comercio (SIC) por infracciones a la ley.</li>
+      <li>Revocar la autorización y/o solicitar la supresión de tus datos, salvo que una obligación legal o contractual lo impida.</li>
+      <li>Acceder en forma gratuita a tus datos personales objeto de tratamiento.</li>
+    </ul>
+
+    <h3>Procedimiento y plazos</h3>
+    <ul>
+      <li><strong>Consultas:</strong> las respondemos en máximo 10 días hábiles desde su recibo, prorrogables por 5 días hábiles más si te informamos los motivos de la demora.</li>
+      <li><strong>Reclamos</strong> (rectificación, actualización, supresión o revocación): los atendemos en máximo 15 días hábiles desde su recibo, prorrogables por 8 días hábiles más si te informamos los motivos.</li>
     </ul>
     <p>
-      Para ejercerlos escribe a <span class="todo">TODO-OWNER: correo de privacidad</span>. Si consideras que no
-      atendimos tu solicitud, puedes presentar una queja ante la Superintendencia de Industria y Comercio (SIC).
+      Canal para consultas y reclamos: <span class="todo">TODO-OWNER: canal (correo, dirección o formulario) para consultas y reclamos</span>.
+      Si consideras que no atendimos tu solicitud, puedes acudir a la SIC.
     </p>
 
     <h2>8. Cookies y almacenamiento local</h2>
@@ -88,6 +111,16 @@ export const prerender = true;
     <p>
       Podemos actualizar esta política. Publicaremos la versión vigente en esta página y, si el cambio es sustancial,
       te lo comunicaremos por la aplicación o por correo.
+    </p>
+
+    <h2>10. Vigencia</h2>
+    <p>
+      <strong>Vigencia de la política:</strong> 2026-10-21 (borrador)
+      <span class="todo">TODO-OWNER: confirmar la fecha de vigencia de la política</span>.
+    </p>
+    <p>
+      <strong>Vigencia de la base de datos:</strong>
+      <span class="todo">TODO-OWNER: vigencia de la base de datos (plazo de conservación)</span>.
     </p>
 
     <p class="nota">
