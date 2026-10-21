@@ -1,11 +1,11 @@
 /**
  * Planificador de sondeo del KDS (plan gratuito de Cloudflare: cada peticion
- * cuenta). Pausa con la pestana oculta, backoff exponencial 15 s -> 120 s si
+ * cuenta). Pausa con la pestana oculta, backoff exponencial 15 s -> 30 s si
  * no hay cambios y vuelta a 15 s ante un cambio o una accion del usuario.
  * El API de pedidos no devuelve ETag, asi que no se usa If-None-Match.
  */
 export const BASE_POLL_MS = 15_000;
-export const MAX_POLL_MS = 120_000;
+export const MAX_POLL_MS = 30_000;
 
 export function nextPollDelay(current: number, changed: boolean): number {
   if (changed) return BASE_POLL_MS;

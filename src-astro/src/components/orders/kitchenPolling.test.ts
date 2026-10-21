@@ -11,8 +11,10 @@ describe('nextPollDelay', () => {
     expect(nextPollDelay(60_000, true)).toBe(BASE_POLL_MS);
   });
   it('doubles when unchanged, capped at max', () => {
+    expect(MAX_POLL_MS).toBe(30_000);
     expect(nextPollDelay(15_000, false)).toBe(30_000);
-    expect(nextPollDelay(60_000, false)).toBe(120_000);
+    expect(nextPollDelay(30_000, false)).toBe(MAX_POLL_MS);
+    expect(nextPollDelay(60_000, false)).toBe(30_000);
     expect(nextPollDelay(120_000, false)).toBe(MAX_POLL_MS);
   });
 });
@@ -40,7 +42,7 @@ describe('createKitchenPoller', () => {
     const h = harness();
     h.p.start();
     expect(h.pending?.ms).toBe(15_000);
-    for (const ms of [30_000, 60_000, 120_000, 120_000]) {
+    for (const ms of [30_000, 30_000, 30_000, 30_000]) {
       h.pending!.fn();
       await Promise.resolve();
       await Promise.resolve();
