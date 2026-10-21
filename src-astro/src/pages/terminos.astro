@@ -1,0 +1,146 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+/**
+ * Términos de uso de Fi'ze (Colombia). Complementa la política de privacidad.
+ * Los campos TODO-OWNER los completa el responsable antes del lanzamiento publico.
+ */
+export const prerender = true;
+---
+
+<BaseLayout title="Términos de uso — Fi'ze" currentPath="/terminos" showNav={false} description="Términos de uso de Fi'ze: condiciones del servicio, cuentas y limitación de responsabilidad.">
+  <article class="legal" aria-labelledby="terminos-titulo">
+    <p class="marca">Fi'ze</p>
+    <h1 id="terminos-titulo">Términos de uso</h1>
+    <p class="lead">
+      Al usar Fi'ze aceptas estas condiciones. Si no las aceptas, no uses el servicio. Lee también la
+      <a href="/privacidad">política de privacidad</a>.
+    </p>
+
+    <h2>1. Responsable del servicio</h2>
+    <p>
+      SWAL (SouthWest AI Labs), <span class="todo">TODO-OWNER: razón social y NIT del responsable</span>.
+      Contacto: <span class="todo">TODO-OWNER: correo de contacto</span>.
+    </p>
+
+    <h2>2. Uso del servicio</h2>
+    <p>
+      Fi'ze es una herramienta de gestión para restaurantes y establecimientos de hostelería. Te comprometes a usarla
+      de forma lícita, a no intentar acceder a datos de otros establecimientos y a no interferir con su funcionamiento.
+    </p>
+
+    <h2>3. Cuentas</h2>
+    <ul>
+      <li>Eres responsable de la información de tu cuenta y de custodiar tus credenciales.</li>
+      <li>Debes dar datos veraces y mantenerlos actualizados.</li>
+      <li>Avisa cuanto antes si sospechas un uso no autorizado de tu cuenta.</li>
+      <li>El acceso de tu equipo debe ser gestionado por ti como titular del establecimiento.</li>
+    </ul>
+
+    <h2>4. Datos del restaurante</h2>
+    <p>
+      La carta, recetas, pedidos y demás datos que registras son tuyos. Para prestar el servicio, SWAL los aloja y puede
+      leerlos, tal y como explica la política de privacidad. No los usamos para fines distintos de operar Fi'ze.
+    </p>
+
+    <h2>5. Disponibilidad</h2>
+    <p>
+      Trabajamos para que el servicio esté disponible, pero puede haber interrupciones por mantenimiento, fallos de red
+      o causas ajenas a nosotros. Algunas funciones pueden seguir disponibles sin conexión en el dispositivo.
+    </p>
+
+    <h2>6. Limitación de responsabilidad</h2>
+    <p>
+      En la medida que permita la ley colombiana, SWAL no responde por pérdidas indirectas, lucro cesante ni decisiones
+      comerciales tomadas con base en la información de la aplicación. Tampoco responde por daños derivados de un uso
+      indebido de tu cuenta o de tus credenciales.
+      <span class="todo">TODO-OWNER: revisión jurídica de esta cláusula y del tope de responsabilidad</span>.
+    </p>
+
+    <h2>7. Suspensión y terminación</h2>
+    <p>
+      Podemos suspender cuentas que incumplan estos términos o que pongan en riesgo el servicio. Puedes dejar de usar
+      Fi'ze en cualquier momento.
+    </p>
+
+    <h2>8. Cambios</h2>
+    <p>
+      Podemos actualizar estos términos. La versión vigente estará siempre en esta página. Si sigues usando el servicio
+      tras un cambio, se entiende que lo aceptas.
+    </p>
+
+    <h2>9. Ley aplicable</h2>
+    <p>
+      Estos términos se rigen por las leyes de la República de Colombia. Las consultas sobre tus datos personales se
+      tramitan según la Ley 1581 de 2012.
+    </p>
+  </article>
+</BaseLayout>
+
+<style>
+  /* Mismo lenguaje visual que /offline y /privacidad: tokens Bone, sin colores fijos. */
+  .legal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    width: 100%;
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 6vw, 3.5rem) 0;
+  }
+
+  .marca {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--swal-text-muted);
+  }
+
+  h1 {
+    font-size: clamp(1.5rem, 5.5vw, 2.125rem);
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--swal-text);
+    text-wrap: balance;
+  }
+
+  h2 {
+    margin-top: 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--swal-text);
+  }
+
+  p,
+  li {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--swal-text-secondary);
+  }
+
+  ul {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-left: 1.25rem;
+  }
+
+  /* Marcadores de pendiente: se leen como texto, no solo por color. */
+  .todo {
+    font-weight: 600;
+    color: var(--swal-text);
+    text-decoration: underline dashed;
+    text-underline-offset: 0.2em;
+  }
+
+  .lead {
+    color: var(--swal-text-muted);
+  }
+
+  a {
+    color: var(--swal-text);
+    text-underline-offset: 0.2em;
+  }
+</style>

@@ -1,0 +1,171 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+/**
+ * Politica de privacidad (Ley 1581 de 2012 y Decreto 1377 de 2013, Colombia).
+ *
+ * Redactada de forma honesta: hoy SWAL puede leer los datos del restaurante
+ * (el servidor los descifra para operar el servicio). No se promete cifrado
+ * extremo a extremo. Los campos TODO-OWNER los completa el responsable antes
+ * del lanzamiento publico.
+ */
+export const prerender = true;
+---
+
+<BaseLayout title="Política de privacidad — Fi'ze" currentPath="/privacidad" showNav={false} description="Política de privacidad de Fi'ze: qué datos recolectamos, para qué, cuánto los guardamos y cómo ejercer tus derechos.">
+  <article class="legal" aria-labelledby="privacidad-titulo">
+    <p class="marca">Fi'ze</p>
+    <h1 id="privacidad-titulo">Política de privacidad</h1>
+    <p class="lead">
+      Esta política explica qué datos personales tratamos cuando usas Fi'ze, para qué los usamos y qué derechos tienes.
+      Se rige por la Ley 1581 de 2012 y el Decreto 1377 de 2013 de Colombia.
+    </p>
+
+    <h2>1. Responsable del tratamiento</h2>
+    <p>
+      SWAL (SouthWest AI Labs), <span class="todo">TODO-OWNER: razón social y NIT del responsable</span>.
+      Contacto para temas de privacidad: <span class="todo">TODO-OWNER: correo de privacidad</span>.
+    </p>
+
+    <h2>2. Datos que recolectamos</h2>
+    <ul>
+      <li><strong>Datos de cuenta:</strong> nombre, correo electrónico y datos de acceso de quien administra un restaurante.</li>
+      <li><strong>Datos del restaurante:</strong> carta, recetas, costos, inventario, mesas, pedidos y ventas que registra el equipo.</li>
+      <li><strong>Datos técnicos:</strong> información necesaria para mantener la sesión y el funcionamiento de la aplicación en tu dispositivo.</li>
+    </ul>
+
+    <h2>3. Finalidades</h2>
+    <ul>
+      <li>Prestar el servicio de gestión del restaurante y sus funciones (mesas, pedidos, cocina, inventario).</li>
+      <li>Gestionar tu cuenta, dar soporte y responder consultas.</li>
+      <li>Mantener la seguridad del servicio y prevenir usos indebidos.</li>
+      <li>Cumplir obligaciones legales aplicables en Colombia.</li>
+    </ul>
+    <p>No vendemos tus datos ni los usamos para publicidad de terceros.</p>
+
+    <h2>4. Quién puede leer tus datos</h2>
+    <p>
+      Somos transparentes: hoy los datos de tu restaurante se guardan en servidores que SWAL opera, y SWAL puede leerlos
+      para prestar el servicio. No afirmamos que sean cifrados de extremo a extremo ni que ninguna persona pueda leerlos.
+      Limitamos el acceso al personal que lo necesita para operar Fi'ze.
+    </p>
+
+    <h2>5. Encargados del tratamiento</h2>
+    <p>
+      Usamos <strong>Cloudflare</strong> como encargado para alojar y entregar la aplicación y sus datos. Cloudflare
+      trata los datos siguiendo nuestras instrucciones.
+    </p>
+
+    <h2>6. Retención</h2>
+    <p>
+      Conservamos los datos mientras la cuenta esté activa y durante el tiempo necesario para cumplir obligaciones legales.
+      <span class="todo">TODO-OWNER: plazo concreto de conservación tras la baja de la cuenta</span>.
+      Puedes pedir su supresión en los términos de la sección 7.
+    </p>
+
+    <h2>7. Tus derechos (ARCO)</h2>
+    <p>Como titular de tus datos puedes ejercer los derechos de:</p>
+    <ul>
+      <li><strong>Acceso:</strong> conocer qué datos tuyos tratamos.</li>
+      <li><strong>Rectificación:</strong> corregir datos inexactos o incompletos.</li>
+      <li><strong>Cancelación:</strong> pedir la supresión de tus datos cuando proceda.</li>
+      <li><strong>Oposición:</strong> oponerte a tratamientos que no sean necesarios para el servicio.</li>
+      <li><strong>Revocación:</strong> retirar la autorización otorgada, salvo que una obligación legal lo impida.</li>
+    </ul>
+    <p>
+      Para ejercerlos escribe a <span class="todo">TODO-OWNER: correo de privacidad</span>. Si consideras que no
+      atendimos tu solicitud, puedes presentar una queja ante la Superintendencia de Industria y Comercio (SIC).
+    </p>
+
+    <h2>8. Cookies y almacenamiento local</h2>
+    <p>
+      Fi'ze usa cookies técnicas y almacenamiento local del navegador para mantener la sesión y recordar tus preferencias,
+      como el tema visual. No usamos cookies publicitarias.
+      <span class="todo">TODO-OWNER: lista exacta de cookies y su duración</span>.
+    </p>
+
+    <h2>9. Cambios a esta política</h2>
+    <p>
+      Podemos actualizar esta política. Publicaremos la versión vigente en esta página y, si el cambio es sustancial,
+      te lo comunicaremos por la aplicación o por correo.
+    </p>
+
+    <p class="nota">
+      <a href="/terminos">Ver términos de uso</a>
+    </p>
+  </article>
+</BaseLayout>
+
+<style>
+  /* Mismo lenguaje visual que /offline: tokens Bone, sin colores fijos. */
+  .legal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    width: 100%;
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 6vw, 3.5rem) 0;
+  }
+
+  .marca {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--swal-text-muted);
+  }
+
+  h1 {
+    font-size: clamp(1.5rem, 5.5vw, 2.125rem);
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--swal-text);
+    text-wrap: balance;
+  }
+
+  h2 {
+    margin-top: 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--swal-text);
+  }
+
+  p,
+  li {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    color: var(--swal-text-secondary);
+  }
+
+  ul {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-left: 1.25rem;
+  }
+
+  strong {
+    color: var(--swal-text);
+    font-weight: 600;
+  }
+
+  /* Marcadores de pendiente: se leen como texto, no solo por color. */
+  .todo {
+    font-weight: 600;
+    color: var(--swal-text);
+    text-decoration: underline dashed;
+    text-underline-offset: 0.2em;
+  }
+
+  .lead,
+  .nota {
+    color: var(--swal-text-muted);
+  }
+
+  a {
+    color: var(--swal-text);
+    text-underline-offset: 0.2em;
+  }
+</style>
