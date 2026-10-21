@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
-import { requireSession } from '../../../../lib/auth/session';
+import { requireRole } from '../../../../lib/auth/requireRole';
 import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 import { isOrderStatus } from '../../../../lib/orderStateMachine';
 import {
@@ -38,7 +38,7 @@ const json = (body: unknown, status: number) =>
 
 export const POST: APIRoute = async ({ request, params, locals }) => {
   try {
-    const user = requireSession(locals);
+    const user = requireRole(locals, ['owner', 'caja']);
     // El tenant sale de la sesion; un `instance_id` ajeno en query o body es 403 (antes de leer el cuerpo).
     const instanceId = await resolveRequestTenant(locals, request);
 
@@ -135,7 +135,7 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
 /** GET /api/orders/[id]/payment — pagos registrados del pedido. */
 export const GET: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner', 'caja']);
     const { id } = params;
     if (!id) return json({ error: 'Order id is required' }, 400);
 

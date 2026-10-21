@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../../lib/storageAdapter';
 import { isTxKind, appendTx, txHistory, type TxKind } from '../../../../lib/inventoryLedger';
-import { requireSession } from '../../../../lib/auth/session';
+import { requireRole } from '../../../../lib/auth/requireRole';
 import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 const txSchema = z.object({
@@ -14,6 +14,7 @@ const txSchema = z.object({
 // GET historial inmutable · POST nuevo movimiento (stock se recalcula solo)
 export const GET: APIRoute = async ({ params, request, locals }) => {
   try {
+    requireRole(locals, ['owner', 'caja', 'cocina']);
     const { id } = params;
     if (!id) {
       return new Response(JSON.stringify({ error: 'Item ID required' }), {
@@ -52,7 +53,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
 
 export const POST: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
     // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 

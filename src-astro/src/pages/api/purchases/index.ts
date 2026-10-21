@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { createStorageAdapter } from '../../../lib/storageAdapter';
-import { requireSession } from '../../../lib/auth/session';
+import { requireRole } from '../../../lib/auth/requireRole';
 import { resolveRequestTenant, authErrorResponse } from '../../../lib/auth/tenant';
 import { purchaseTotals, roundCOP, type PurchaseLine } from '../../../lib/domain.extensions';
 import type { DomainRecord, StorageAdapter } from '../../../lib/domain';
@@ -36,7 +36,7 @@ const createSchema = z.object({
  */
 export const GET: APIRoute = async ({ request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
     // El tenant sale de la sesion; `?instance_id=` de otra instancia es 403 (ver lib/auth/tenant.ts).
     const instanceId = await resolveRequestTenant(locals, request);
     const adapter = createStorageAdapter(locals);
@@ -143,7 +143,7 @@ async function applyLines(
  */
 export const POST: APIRoute = async ({ request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner']);
     // Query o body con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
     let body: unknown;

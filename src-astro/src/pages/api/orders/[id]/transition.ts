@@ -4,7 +4,7 @@ import { createStorageAdapter } from '../../../../lib/storageAdapter';
 import { isOrderStatus, assertTransition, type OrderStatus } from '../../../../lib/orderStateMachine';
 import { deductRecipe } from '../../../../lib/recipes';
 import type { StorageAdapter } from '../../../../lib/domain';
-import { requireSession } from '../../../../lib/auth/session';
+import { requireRole } from '../../../../lib/auth/requireRole';
 import { resolveRequestTenant, authErrorResponse } from '../../../../lib/auth/tenant';
 
 async function deductOrderStock(
@@ -35,7 +35,7 @@ const transitionSchema = z.object({
 // POST /api/orders/[id]/transition { to } — único camino válido para cambiar status
 export const POST: APIRoute = async ({ params, request, locals }) => {
   try {
-    requireSession(locals);
+    requireRole(locals, ['owner', 'staff', 'cocina']);
     // Query o body (`instance_id`) con otra instancia -> 403 antes de leer el cuerpo.
     const instanceId = await resolveRequestTenant(locals, request);
 
