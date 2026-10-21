@@ -14,6 +14,7 @@
   } from '../../stores/orders.svelte';
   import { meshSubscribe, meshPublish } from '../../lib/mesh';
   import { api } from '../../lib/api-client';
+  import { createKitchenPoller } from './kitchenPolling';
   import { isLocalMode } from '../../lib/local/localMode';
   import { isOrderStatus, ORDER_STATUS_BADGE_LABELS, ORDER_STATUS_LABELS } from '../../lib/orderStateMachine';
   import { shouldSeedKdsDemo, isDemoFlaggedUrl } from '../../lib/kdsAutoSeed';
@@ -25,7 +26,8 @@
   let { autoPublish = true, statuses }: { autoPublish?: boolean; statuses?: OrderStatus[] } = $props();
 
   let unsub: (() => void) | null = null;
-  let pollHandle: ReturnType<typeof setInterval> | null = null;
+  let poller: ReturnType<typeof createKitchenPoller> | null = null;
+  let lastSignature = '';
   let demoNotice = $state<string>('');
 
   // Mesas del local: `order.tableId` es un id interno y el personal necesita el numero
@@ -115,15 +117,18 @@
     ].slice(-50);
   }
 
-  async function pollBackend() {
-    if (typeof window === 'undefined') return;
+  async function pollBackend(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
     try {
       const res = await api.get('/api/orders');
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const data = await res.json();
       // Bare-array or { list: [...] } payload normalization
       const isArray = Array.isArray(data);
       const rawList = normalizeOrdersPayload(isArray ? data : data);
+      const signature = JSON.stringify(rawList);
+      const changed = signature !== lastSignature;
+      lastSignature = signature;
 
       for (const o of rawList) {
         const existingIdx = orders.list.findIndex((x) => x.id === o.id);
@@ -138,9 +143,18 @@
           pushLog(`[cocina] pedido sincronizado ${o.id.slice(-6)} (${ORDER_STATUS_LABELS[o.status]})`);
         }
       }
+      return changed;
     } catch {
       /* tolerate backend offline — store local-first */
+      return false;
     }
+  }
+
+  function onVisibility() {
+    poller?.onVisibilityChange();
+  }
+  function onUserAction() {
+    poller?.reset();
   }
 
   onMount(async () => {
@@ -175,7 +189,11 @@
     // vacio (EMPTY_LABELS) y cero escrituras en la base del restaurante.
     await pollBackend();
     await loadTables();
-    pollHandle = setInterval(pollBackend, 15_000);
+    poller = createKitchenPoller({ poll: pollBackend });
+    poller.start();
+    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('pointerdown', onUserAction);
+    document.addEventListener('keydown', onUserAction);
 
     // Demo del KDS. Servidor (/dashboard/kitchen): fantasmas en memoria de
     // siempre. Local (/local/*): SOLO con `?demo=1` explicito, y entonces por
@@ -212,7 +230,12 @@
 
   onDestroy(() => {
     unsub?.();
-    if (pollHandle) clearInterval(pollHandle);
+    poller?.stop();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('pointerdown', onUserAction);
+      document.removeEventListener('keydown', onUserAction);
+    }
   });
 
   /**
