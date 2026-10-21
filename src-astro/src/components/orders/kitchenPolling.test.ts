@@ -39,6 +39,29 @@ function harness(hidden = false) {
 }
 
 describe('createKitchenPoller', () => {
+  it('keeps a user reset made during an in-flight poll', async () => {
+    let pending: { fn: () => void; ms: number } | null = null;
+    let resolvePoll: (v: boolean) => void = () => {};
+    const p = createKitchenPoller({
+      poll: () => new Promise<boolean>((r) => (resolvePoll = r)),
+      isHidden: () => false,
+      setTimer: (fn, ms) => {
+        pending = { fn, ms };
+        return 1;
+      },
+      clearTimer: () => {
+        pending = null;
+      },
+    });
+    p.start();
+    pending!.fn();
+    p.reset();
+    resolvePoll(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pending!.ms).toBe(BASE_POLL_MS);
+  });
+
   it('backs off while nothing changes', async () => {
     const h = harness();
     h.p.start();

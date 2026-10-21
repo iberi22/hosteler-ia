@@ -35,6 +35,7 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
   let handle: unknown = null;
   let running = false;
   let inFlight = false;
+  let resetDuringFlight = false;
 
   function cancel() {
     if (handle !== null) clearTimer(handle);
@@ -52,6 +53,7 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
     handle = null;
     if (!running || isHidden() || inFlight) return;
     inFlight = true;
+    resetDuringFlight = false;
     let changed = false;
     try {
       changed = await opts.poll();
@@ -60,7 +62,8 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
     } finally {
       inFlight = false;
     }
-    delay = nextPollDelay(delay, changed);
+    delay = resetDuringFlight ? BASE_POLL_MS : nextPollDelay(delay, changed);
+    resetDuringFlight = false;
     schedule();
   }
 
@@ -81,6 +84,7 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
      */
     reset() {
       delay = BASE_POLL_MS;
+      if (inFlight) resetDuringFlight = true;
       if (!running || isHidden()) return;
       if (handle !== null) {
         if (dueAt - now() > BASE_POLL_MS) schedule();
