@@ -18,6 +18,7 @@ export interface KitchenPollerOptions {
   isHidden?: () => boolean;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
+  now?: () => number;
 }
 
 export function createKitchenPoller(opts: KitchenPollerOptions) {
@@ -27,7 +28,10 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
   const clearTimer =
     opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
 
+  const now = opts.now ?? (() => Date.now());
+
   let delay = BASE_POLL_MS;
+  let dueAt = 0;
   let handle: unknown = null;
   let running = false;
   let inFlight = false;
@@ -40,6 +44,7 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
   function schedule() {
     cancel();
     if (!running || isHidden()) return;
+    dueAt = now() + delay;
     handle = setTimer(tick, delay);
   }
 
@@ -70,10 +75,18 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
       running = false;
       cancel();
     },
-    /** Accion del usuario: vuelve al ritmo base. */
+    /**
+     * Accion del usuario: vuelve al ritmo base sin posponer un sondeo ya
+     * programado (si no, acciones frecuentes dejarian la cola sin sondear).
+     */
     reset() {
       delay = BASE_POLL_MS;
-      schedule();
+      if (!running || isHidden()) return;
+      if (handle !== null) {
+        if (dueAt - now() > BASE_POLL_MS) schedule();
+        return;
+      }
+      if (!inFlight) schedule();
     },
     onVisibilityChange() {
       if (!running) return;
@@ -83,6 +96,38 @@ export function createKitchenPoller(opts: KitchenPollerOptions) {
         cancel();
         void tick();
       }
+    },
+  };
+}
+
+export interface KitchenPollingSetupOptions {
+  poll: () => Promise<boolean>;
+  isDestroyed: () => boolean;
+  target?: Pick<Document, 'addEventListener' | 'removeEventListener'>;
+}
+
+/**
+ * Crea el poller y engancha los listeners del documento, salvo que el
+ * componente ya se haya desmontado mientras esperaba la carga inicial.
+ * Devuelve null (sin poller ni listeners) en ese caso.
+ */
+export function setupKitchenPolling(opts: KitchenPollingSetupOptions) {
+  if (opts.isDestroyed()) return null;
+  const target = opts.target ?? document;
+  const poller = createKitchenPoller({ poll: opts.poll });
+  const onVisibility = () => poller.onVisibilityChange();
+  const onUserAction = () => poller.reset();
+  poller.start();
+  target.addEventListener('visibilitychange', onVisibility);
+  target.addEventListener('pointerdown', onUserAction);
+  target.addEventListener('keydown', onUserAction);
+  return {
+    poller,
+    dispose() {
+      poller.stop();
+      target.removeEventListener('visibilitychange', onVisibility);
+      target.removeEventListener('pointerdown', onUserAction);
+      target.removeEventListener('keydown', onUserAction);
     },
   };
 }
