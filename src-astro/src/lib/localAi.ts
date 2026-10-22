@@ -30,26 +30,40 @@ export async function detectLocalAiTier(env: LocalAiEnvironment = localAiEnviron
   return 'rules';
 }
 
+const NUMBER_TOKEN = "[-+\\u2212]?(?:\\d+(?:[.,]\\d+)?|[.,]\\d+)(?:[eE][-+\\u2212]?\\d+)?";
+const NUMBER_REGEX = new RegExp(`^${NUMBER_TOKEN}$`);
+
 export function rulesRecommendations(prompt: string): string {
   const lines = prompt.split('\n');
   const restockItems: { name: string; stock: string }[] = [];
   const topItems: { name: string; qty: string }[] = [];
 
-  for (const line of lines) {
+  for (let line of lines) {
+    line = line.trim();
     if (line.startsWith('Stock bajo:')) {
       const parts = line.replace('Stock bajo:', '').trim();
       if (parts !== 'ninguno') {
-        const regex = /(.*?)\s*\(([-+]?\d+(?:[.,]\d+)?)\)(?:,\s*|$)/g;
+        const regex = /\(([^()]*)\)\s*(?:,\s*|$)/g;
         let match;
+        let lastMatchEnd = 0;
         while ((match = regex.exec(parts)) !== null) {
-          restockItems.push({ name: match[1].trim(), stock: match[2] });
+          let nameChunk = parts.slice(lastMatchEnd, match.index).trim();
+          if (nameChunk.startsWith(',')) nameChunk = nameChunk.slice(1).trim();
+          lastMatchEnd = regex.lastIndex;
+
+          const inner = match[1];
+          if (NUMBER_REGEX.test(inner)) {
+            restockItems.push({ name: nameChunk, stock: inner });
+          } else {
+            restockItems.push({ name: `${nameChunk} (${inner})`, stock: "" });
+          }
         }
       }
     }
     if (line.startsWith('Top ventas:')) {
       const parts = line.replace('Top ventas:', '').trim();
       if (parts !== 'sin datos') {
-        const regex = /(.*?)\s*x([-+]?\d+(?:[.,]\d+)?)(?:,\s*|$)/g;
+        const regex = new RegExp(`(.*?)\\s*x(${NUMBER_TOKEN})(?:,\\s*|$)`, 'g');
         let match;
         while ((match = regex.exec(parts)) !== null) {
           topItems.push({ name: match[1].trim(), qty: match[2] });
@@ -62,10 +76,17 @@ export function rulesRecommendations(prompt: string): string {
 
   // Up to 3 restock items
   for (const item of restockItems.slice(0, 3)) {
+    let detail;
+    if (item.stock === "") {
+      detail = 'Está en la lista de stock bajo.';
+    } else {
+      const formattedStock = item.stock.replace(/\u2212/g, '-');
+      detail = `El stock actual es de ${formattedStock}.`;
+    }
     recommendations.push({
       type: 'restock',
       title: `Reponer ${item.name}`,
-      detail: `El stock actual es de ${item.stock}.`,
+      detail,
     });
   }
 
