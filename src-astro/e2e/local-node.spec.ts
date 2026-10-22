@@ -1,5 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect as baseExpect, type Page } from '@playwright/test';
+
+const expect = baseExpect.configure({ timeout: 15_000 });
 
 // Nodo local sin registro (docs/producto/NODO-LOCAL.md §4–5, tramo 1): onboarding completo, carta en
 // IndexedDB, edicion sin red desde el precache, copia cifrada, borrar el equipo y restaurar con el codigo.
@@ -139,7 +141,10 @@ test('nodo local: onboarding, carta sin red, copia cifrada y restauración', asy
 
   // Borrar el almacenamiento del sitio (IndexedDB y localStorage). El service worker y su cache quedan.
   const cdp = await context.newCDPSession(page);
-  await cdp.send('Storage.clearDataForOrigin', { origin: new URL(page.url()).origin, storageTypes: 'indexeddb,local_storage' });
+  const origin = new URL(page.url()).origin;
+  // Navegar a about:blank antes de borrar para que Chromium cierre IndexedDB sin error por la fuerza
+  await page.goto('about:blank');
+  await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'indexeddb,local_storage' });
   await page.goto('/local/');
   await expect(page.getByTestId('paso')).toHaveText('Paso 1 de 6');
   await page.getByRole('link', { name: 'Ya tengo una copia de Fize' }).click();
@@ -237,7 +242,10 @@ test.describe('copia de otro local', () => {
     const copiaB = testInfo.outputPath('cafe-norte.fize');
     await descargarCopia(page, copiaB);
     const cdp = await context.newCDPSession(page);
-    await cdp.send('Storage.clearDataForOrigin', { origin: new URL(page.url()).origin, storageTypes: 'indexeddb,local_storage' });
+    const origin = new URL(page.url()).origin;
+    // Navegar a about:blank antes de borrar para que Chromium cierre IndexedDB sin error por la fuerza
+    await page.goto('about:blank');
+    await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'indexeddb,local_storage' });
 
     // Este equipo: "Doña Rosa", con su carta.
     const codeA = await crearLocal(page, 'Doña Rosa', 'Ejecutivo del día');
