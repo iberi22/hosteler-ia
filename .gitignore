@@ -80,6 +80,16 @@ docs/legacy/
 .hermes/
 .atl/
 
+# --- Artefactos generados en cada refresh de skills/docs (2026-10-27) ---
+# .gitcore/skill-registry.json: copia para GitCore de .atl/skill-registry.md, la escribe
+# ~/.hermes/scripts/skill-registry-refresh.sh en cada maquina. Nada la consume fuera de
+# ella y cambia en cada refresh (rutas absolutas, timestamps) => churn sin valor.
+.gitcore/skill-registry.json
+# docs/SWAL/: NEW_SCOPES_*.md que escribe swal-docs-propagate.sh desde la plantilla
+# interna + SRS. Se regenera, no se edita a mano. Ignorado, no borrado:
+# los dos siguen en disco. Ver docs/REVISION-2026-10-27.md (§ Repo hygiene).
+docs/SWAL/
+
 # .vscode/ ya estaba ignorado en la linea 46; vercel.json se declaraba como
 # "pendiente" en un plan interno (F5_VERCEL_SWITCH_PREP), pero el producto despliega
 # a Cloudflare Workers con wrangler deploy (ver private/infra/workflows/deploy-astro.yml). El archivo ya apuntaba a Astro (src-astro/dist), o

@@ -58,7 +58,7 @@ El backend y frontend de Hosteler-IA están completamente implementados, son rob
 
 ### **Stack Principal**
 ```typescript
-Frontend:  Astro 7 + Svelte 5 (runes) + TypeScript + Tailwind CSS 4 + @swal/ui
+Frontend:  Astro 7 + Svelte 5 (runes) + TypeScript + @swal/ui
 Backend:   Cloudflare Workers (D1 + R2 + KV + AI) + StorageAdapter (Memory/IDB/Vault)
 IA:        Cloudflare Workers AI + motor de recomendaciones Fi'ze
 PWA:       Workbox + BackgroundSync (fi-ze-orders) + IndexedDB (idb)

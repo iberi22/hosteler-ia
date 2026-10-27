@@ -159,7 +159,7 @@ build limpio + Service Worker con BackgroundSync.
 - Contraste WCAG: links con acento #06b6d4.
 
 ### Changed
-- Stack: Astro 7 + Svelte 5 + Tailwind 4 + @swal/ui; backend Cloudflare
+- Stack: Astro 7 + Svelte 5 + @swal/ui; backend Cloudflare
   (D1+R2+KV+AI); `cores/swal-vault` vendored para CI autocontenido.
 - `package.json` 0.1.0 → 0.2.0 (raíz + src-astro).
 
