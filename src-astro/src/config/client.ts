@@ -15,10 +15,36 @@ export interface ClientConfig {
   whatsapp: string;
 }
 
+const getEnvName = () => {
+  if (typeof process !== 'undefined' && process.env.PUBLIC_CLIENT_NAME) return process.env.PUBLIC_CLIENT_NAME;
+  return import.meta.env?.PUBLIC_CLIENT_NAME;
+};
+
+const getEnvSlug = () => {
+  if (typeof process !== 'undefined' && process.env.PUBLIC_CLIENT_SLUG) return process.env.PUBLIC_CLIENT_SLUG;
+  return import.meta.env?.PUBLIC_CLIENT_SLUG;
+};
+
+const getEnvWhatsapp = () => {
+  if (typeof process !== 'undefined' && process.env.PUBLIC_CLIENT_WHATSAPP) return process.env.PUBLIC_CLIENT_WHATSAPP;
+  return import.meta.env?.PUBLIC_CLIENT_WHATSAPP;
+};
+
+const rawSlug = getEnvSlug() ?? 'restaurante-demo';
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+if (typeof rawSlug !== 'string' || rawSlug.length < 3 || rawSlug.length > 60 || !SLUG_PATTERN.test(rawSlug)) {
+  throw new Error(`Invalid slug: ${rawSlug}`);
+}
+
+const rawWhatsapp = getEnvWhatsapp() ?? '+573005551234';
+if (typeof rawWhatsapp !== 'string' || !/^\+\d+$/.test(rawWhatsapp)) {
+  throw new Error(`Invalid whatsapp: ${rawWhatsapp}`);
+}
+
 export const CLIENT: ClientConfig = {
-  restaurantName: 'Restaurante Demo',
-  slug: 'restaurante-demo',
-  whatsapp: '+573005551234',
+  restaurantName: getEnvName() ?? 'Restaurante Demo',
+  slug: rawSlug,
+  whatsapp: rawWhatsapp,
 };
 
 /** Ruta de la carta publica de la clienta. */
