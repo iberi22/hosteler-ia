@@ -278,3 +278,9 @@ Costo Cloudflare: **por publicación** 1 lectura D1 + 1 fila escrita (2 la prime
 **por visita** 1 petición al Worker y, si la carta no está en la Cache API (60 s, por centro de datos), 1 lectura
 R2 clase B. La ausencia de instantánea también se guarda 60 s, así que las cartas en la nube no pagan R2 extra por
 visita. La carta publicada no pide `/api/menu-nutrition`. 0 KV, 0 crons, 0 Workers nuevos.
+
+### Environment Variables
+For local deployment and configuration, the following environment variables can be set (e.g. in `.env`):
+- `PUBLIC_CLIENT_NAME`: The visible name of the restaurant (default: `Restaurante Demo`).
+- `PUBLIC_CLIENT_SLUG`: The public link slug for the menu `fize.swal.network/<slug>/menu`. Must be 3-60 characters, lowercase, numbers, and hyphens (default: `restaurante-demo`).
+- `PUBLIC_CLIENT_WHATSAPP`: The WhatsApp number receiving orders, in E.164 format (e.g. `+573005551234`, must start with `+` followed by digits) (default: `+573005551234`).
