@@ -78,7 +78,7 @@
   const faqs: Faq[] = [
     {
       q: '¿De verdad es gratis? ¿Cuál es la trampa?',
-      a: 'No hay trampa. Lo básico para trabajar es gratis para siempre. Si algún día ofrecemos algo de pago será opcional y por algo que nos cueste dinero, como respaldo gestionado o inteligencia artificial.',
+      a: 'No hay trampa. Fize es gratis. No vendemos tus datos.',
     },
     {
       q: '¿Qué hacen con mis datos?',
@@ -220,9 +220,8 @@
         </p>
       </header>
       <p class="note">
-        <strong>¿Cómo se sostiene?</strong> Fize es parte de la red SWAL. Más adelante habrá servicios opcionales que sí nos
-        cuestan dinero (por ejemplo respaldo gestionado o asistencia con inteligencia artificial). Lo que necesitas para
-        trabajar cada día seguirá siendo gratis, y nunca vamos a vender tus datos para cubrir costos.
+        <strong>¿Cómo se sostiene?</strong> Fize es parte de la red SWAL. Lo que necesitas para
+        trabajar cada día es gratis, y nunca vamos a vender tus datos para cubrir costos.
       </p>
     </section>
 
