@@ -9,7 +9,7 @@
     "trustBadge": "Confiado por 500+ restaurantes",
     "headline": "Restaurante",
     "headlineHighlight": "Inteligente",
-    "subheadline": "Plataforma impulsada por IA para menús QR, pedidos, pagos y analíticas.",
+    "subheadline": "Plataforma para menús QR, pedidos, pagos y analíticas.",
     "freeForever": "Gratis para siempre",
     "proPlans": "Planes Pro para escalar",
     "cta": "Empieza Gratis Hoy",
@@ -20,7 +20,7 @@
         "description": "Experiencia gastronómica sin contacto"
       },
       "analytics": {
-        "title": "Analíticas con IA",
+        "title": "Analíticas",
         "description": "Predicción de demanda y perspectivas"
       },
       "payments": {
@@ -41,7 +41,7 @@
     "signIn": "Iniciar Sesión",
     "badge": "Precios simples y transparentes",
     "title": "Elige tu Plan",
-    "subtitle": "El software completo es gratuito. La única suscripción opcional es el almacenamiento en la nube de tus datos, cifrado y protegido.",
+    "subtitle": "El software completo es gratuito.",
     "featuresSection": {
       "title": "Todo lo que necesitas para gestionar un restaurante moderno",
       "fast": {
@@ -62,18 +62,6 @@
       "subtitle": "Únete a cientos de restaurantes que ya usan Fi'ze",
       "cta1": "Prueba Gratis",
       "cta2": "Solicitar Demo"
-    },
-    "storage": {
-      "mostPopular": "Único plan",
-      "name": "Almacenamiento en la nube",
-      "priceNote": "Suscripción opcional — solo para datos en la nube",
-      "description": "Tus datos en la nube, cifrados y protegidos. El software completo es gratuito.",
-      "feature1": "Cifrado de extremo a extremo de tus datos",
-      "feature2": "Copias de seguridad automáticas y protegidas",
-      "feature3": "Sincronización segura entre tus dispositivos",
-      "feature4": "Tus datos son tuyos: exportables cuando quieras",
-      "feature5": "Sin anuncios y sin venta de datos",
-      "cta": "Ir al dashboard"
     }
   },
   "common": {

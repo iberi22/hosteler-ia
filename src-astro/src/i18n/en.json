@@ -9,7 +9,7 @@
     "trustBadge": "Trusted by 500+ restaurants",
     "headline": "Smart Restaurant",
     "headlineHighlight": "Management",
-    "subheadline": "AI-powered platform for QR menus, orders, payments, and analytics.",
+    "subheadline": "Platform for QR menus, orders, payments, and analytics.",
     "freeForever": "Free forever",
     "proPlans": "Pro plans to scale",
     "cta": "Start Free Today",
@@ -20,7 +20,7 @@
         "description": "Contactless dining experience"
       },
       "analytics": {
-        "title": "AI Analytics",
+        "title": "Analytics",
         "description": "Demand prediction & insights"
       },
       "payments": {
@@ -41,7 +41,7 @@
     "signIn": "Sign In",
     "badge": "Simple, transparent pricing",
     "title": "Choose Your Plan",
-    "subtitle": "The full software is free. The only optional subscription is cloud storage of your data, encrypted and protected.",
+    "subtitle": "The full software is free.",
     "featuresSection": {
       "title": "Everything you need to run a modern restaurant",
       "fast": {
@@ -62,18 +62,6 @@
       "subtitle": "Join hundreds of restaurants already using Fi'ze",
       "cta1": "Start Free Trial",
       "cta2": "Book a Demo"
-    },
-    "storage": {
-      "mostPopular": "Only plan",
-      "name": "Cloud storage",
-      "priceNote": "Optional subscription — cloud data only",
-      "description": "Your data in the cloud, encrypted and protected. The full software is free.",
-      "feature1": "End-to-end encryption of your data",
-      "feature2": "Automatic, protected backups",
-      "feature3": "Secure sync across your devices",
-      "feature4": "Your data is yours: export anytime",
-      "feature5": "No ads and no data selling",
-      "cta": "Go to dashboard"
     }
   },
   "common": {

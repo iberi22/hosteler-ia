@@ -138,8 +138,9 @@ test('nodo local: onboarding, carta sin red, copia cifrada y restauración', asy
   expect(readFileSync(backupPath, 'utf8')).not.toContain('Ejecutivo');
 
   // Borrar el almacenamiento del sitio (IndexedDB y localStorage). El service worker y su cache quedan.
+  await page.goto('about:blank');
   const cdp = await context.newCDPSession(page);
-  await cdp.send('Storage.clearDataForOrigin', { origin: new URL(page.url()).origin, storageTypes: 'indexeddb,local_storage' });
+  await cdp.send('Storage.clearDataForOrigin', { origin: new URL('http://localhost:4331').origin, storageTypes: 'indexeddb,local_storage' });
   await page.goto('/local/');
   await expect(page.getByTestId('paso')).toHaveText('Paso 1 de 6');
   await page.getByRole('link', { name: 'Ya tengo una copia de Fize' }).click();
@@ -236,8 +237,9 @@ test.describe('copia de otro local', () => {
     const codeB = await crearLocal(page, 'Café Norte', 'Tinto campesino');
     const copiaB = testInfo.outputPath('cafe-norte.fize');
     await descargarCopia(page, copiaB);
+    await page.goto('about:blank');
     const cdp = await context.newCDPSession(page);
-    await cdp.send('Storage.clearDataForOrigin', { origin: new URL(page.url()).origin, storageTypes: 'indexeddb,local_storage' });
+    await cdp.send('Storage.clearDataForOrigin', { origin: new URL('http://localhost:4331').origin, storageTypes: 'indexeddb,local_storage' });
 
     // Este equipo: "Doña Rosa", con su carta.
     const codeA = await crearLocal(page, 'Doña Rosa', 'Ejecutivo del día');
