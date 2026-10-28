@@ -196,7 +196,7 @@
       <fieldset>
         <legend>Insumos</legend>
         <div class="line-add">
-          <select bind:value={cPicked}>
+          <select bind:value={cPicked} aria-label="Insumo para la línea de compra">
             <option value="">Elige un insumo…</option>
             {#each inventory as i}<option value={i.id}>{i.name} ({i.unit})</option>{/each}
           </select>

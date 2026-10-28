@@ -134,3 +134,4 @@ secrets.json
 service-account*.json
 *-adminsdk-*.json
 docs/private/
+test-results/

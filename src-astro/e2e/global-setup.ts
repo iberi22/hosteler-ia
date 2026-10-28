@@ -7,10 +7,40 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export default function globalSetup(): void {
+import { request } from '@playwright/test';
+
+export default async function globalSetup(): Promise<void> {
   execFileSync('npx', ['wrangler', 'd1', 'migrations', 'apply', 'SWAL_D1', '--local', '--config', 'wrangler.e2e.jsonc'], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
     stdio: 'pipe',
     env: { ...process.env, CI: '1', WRANGLER_SEND_METRICS: 'false' },
   });
+
+  // Seed demo data and save storage state for parameterized routes / a11y testing
+  const cwd = fileURLToPath(new URL('..', import.meta.url));
+  const env = {
+    ...process.env,
+    BASE: 'http://localhost:4331',
+    DEMO_EMAIL: 'e2e-owner@fize.test',
+    DEMO_PASSWORD: 'e2e-Password-123',
+    DEMO_NAME: 'E2E Owner'
+  };
+
+  // Ejecutamos seed-demo
+  execFileSync('node', ['scripts/seed-demo.mjs'], {
+    cwd,
+    stdio: 'pipe',
+    env
+  });
+
+  // Guardar session state para los tests de a11y y rutas autenticadas
+  const ctx = await request.newContext({ baseURL: 'http://localhost:4331' });
+  const login = await ctx.post('/api/auth/login', {
+    data: { email: 'e2e-owner@fize.test', password: 'e2e-Password-123' },
+  });
+  if (login.ok()) {
+    await ctx.storageState({ path: 'e2e/storageState.json' });
+  } else {
+    throw new Error('Failed to login during globalSetup');
+  }
 }
