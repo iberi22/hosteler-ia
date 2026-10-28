@@ -153,9 +153,9 @@
   {:else}
     <div class="map">
       {#each tables as t (t.id)}
-        <Card variant="surface" padding="md" onclick={() => onSelect(t)} class="table-card">
+        <Card variant="surface" padding="md" class="table-card">
           <div class="head">
-            <span class="num">Mesa {t.number}</span>
+            <button type="button" class="num swal-btn-link" onclick={() => onSelect(t)}>Mesa {t.number}</button>
             <div class="head-right">
               <Badge variant={t.status === 'occupied' ? 'warning' : 'success'}>
                 {t.status ?? 'vacant'}
@@ -207,8 +207,9 @@
   }
   .order-link:hover { text-decoration: underline; }
   .order-link:focus-visible { outline: 2px solid var(--swal-accent-cyan); outline-offset: 1px; }
-  :global(.table-card) { cursor: pointer; }
+
   :global(.table-card:hover) { border-color: var(--swal-accent); }
-  :global(.del-btn) { padding: 0.1rem 0.4rem !important; min-width: auto !important; height: auto !important; color: var(--swal-text-muted); }
+  :global(.del-btn) { padding: 0.25rem 0.5rem !important; min-width: 24px !important; min-height: 24px !important; color: var(--swal-text-muted); }
   :global(.del-btn:hover) { color: var(--swal-accent-red, #ef4444); }
+  .swal-btn-link { background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; font-family: inherit; font-size: inherit; font-weight: inherit; color: inherit; text-align: left; }
 </style>

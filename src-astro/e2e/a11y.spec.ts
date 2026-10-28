@@ -94,3 +94,85 @@ for (const path of PAGES) {
     expect(results.violations, `axe WCAG 2.2 AA violations on ${path}:\n${summary.join('\n')}`).toEqual([]);
   });
 }
+
+
+test.describe('Authenticated routes and Parametrized public routes', () => {
+  test.use({ storageState: 'e2e/storageState.json' });
+
+  const DASHBOARD_PAGES = [
+    '/dashboard',
+    '/dashboard/analytics',
+    '/dashboard/client',
+    '/dashboard/inventory',
+    '/dashboard/kitchen',
+    '/dashboard/menu',
+    '/dashboard/notifications',
+    '/dashboard/orders',
+    '/dashboard/purchases',
+    '/dashboard/recipes',
+    '/dashboard/settings',
+    '/dashboard/tables',
+    '/dashboard/tables/print'
+  ];
+
+  for (const path of DASHBOARD_PAGES) {
+    test(`a11y WCAG 2.2 AA: ${path} has no violations`, async ({ page }) => {
+      await openStyled(page, path);
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+        .analyze();
+
+      const summary = results.violations.map(
+        (v) => `${v.id} [${v.impact}] x${v.nodes.length}: ${v.help}`
+      );
+      if (summary.length > 0) {
+        console.log(`[a11y] ${path} -> ${summary.length} violacion(es)\n  ${summary.join('\n  ')}`);
+      }
+
+      expect(results.violations, `axe WCAG 2.2 AA violations on ${path}:\n${summary.join('\n')}`).toEqual([]);
+    });
+  }
+
+  test('a11y WCAG 2.2 AA: parametrized public routes have no violations', async ({ page, request }) => {
+    // 1. Fetch required IDs from API
+    const restaurantsRes = await request.get('/api/restaurants');
+    const restaurants = await restaurantsRes.json();
+    const restaurantId = restaurants[0].id;
+    const slug = restaurants[0].slug;
+
+    const tablesRes = await request.get('/api/tables');
+    const tables = await tablesRes.json();
+    const tableId = tables[0].id;
+
+    // table QR code can be derived or fetched. The route is /table/[qrCode]
+    // The qr code format is usually tableId or table code? Wait, qrCode is usually generated or its ID
+    const qrCode = tables[0].qrCode;
+
+    const ordersRes = await request.get('/api/orders');
+    const orders = await ordersRes.json();
+    const orderId = orders[0].id;
+
+    const PARAM_PAGES = [
+      `/menu/${restaurantId}`,
+      `/${slug}/menu`,
+      `/table/${qrCode}`,
+      `/order-confirmation/${orderId}`
+    ];
+
+    for (const path of PARAM_PAGES) {
+      await openStyled(page, path);
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+        .analyze();
+
+      const summary = results.violations.map(
+        (v) => `${v.id} [${v.impact}] x${v.nodes.length}: ${v.help}`
+      );
+      if (summary.length > 0) {
+        console.log(`[a11y] ${path} -> ${summary.length} violacion(es)\n  ${summary.join('\n  ')}`);
+      }
+
+      expect(results.violations, `axe WCAG 2.2 AA violations on ${path}:\n${summary.join('\n')}`).toEqual([]);
+    }
+  });
+});
