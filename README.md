@@ -2,26 +2,23 @@
 
 Una plataforma empresarial soberana y autónoma para la gestión de restaurantes y hostelería mediante inteligencia artificial avanzada, automatización local y experiencia de usuario PWA offline-first.
 
-## 🚀 Estado del Proyecto: ¡Listo para Producción!
+## 🚀 Estado del Proyecto
 
-**Estado General: 100% Completado ✅**
+**Estado General: En desarrollo (pre-1.0)**
 
-> ⚠️ **Corrección 2026-10-05.** El "100%" anterior era una declaración propia, no una medición, y estaba mal. Lo que sí está medido y verificado a 2026-10-05 sobre `feat/notifications-and-reset-data` @ `ea76dc76d`:
+> Medido y verificado a 2026-10-29 sobre `main` @ `8f95a77e576`:
 >
 > | Dato medido | Valor | Comando |
 > |---|---:|---|
-> | Tests unitarios + integración | **525** en **59** ficheros | `cd src-astro && npx vitest run` |
-> | E2E Playwright | **33** tests en **12** specs | `cd src-astro && npx playwright test --list` |
-> | Rutas REST | **29** ficheros / **59** métodos HTTP | `find src/pages/api -type f \| wc -l` |
-> | `astro check` | 0 errores, 0 avisos, 0 hints | `cd src-astro && pnpm run check` |
->
-> El ledger de features (`features.json`, `metadata.verified_facts`) vive en el repo privado del proyecto. El porcentaje por feature que figura ahí (`progress_pct`) sigue siendo lo que declaró cada wave de entrega y **no** se ha re-auditado feature por feature.
+> | Tests unitarios + integración | **1103** en **113** ficheros | `cd src-astro && pnpm vitest run` |
+> | E2E Playwright | **94** tests en **38** specs | `cd src-astro && npx playwright test --list` |
+> | Rutas REST | **32** ficheros | `find src-astro/src/pages/api -type f \| wc -l` |
+> | `astro check` | 0 errores, 0 avisos | `cd src-astro && pnpm run check` |
 
-El backend y frontend de Hosteler-IA están completamente implementados, son robustos y han sido probados. El sistema es un nodo capaz de gestionar las operaciones completas de un restaurante en un entorno de producción real dentro del ecosistema SWAL (Sovereign Work & Autonomous Living).
+El backend y frontend de Hosteler-IA están implementados y probados. El sistema es un nodo capaz de gestionar las operaciones de un restaurante dentro del ecosistema SWAL (Sovereign Work & Autonomous Living).
 
-* **APIs REST**: 29 ficheros de ruta bajo `src-astro/src/pages/api` que exportan 59 métodos HTTP (medido 2026-10-05 con `find src/pages/api -type f | wc -l` → 29).
-* **Hooks de React**: Custom hooks optimizados para una integración perfecta con la interfaz de usuario.
-* **Arquitectura**: Multi-tenant, descentralizada, segura y escalable basada en nodos soberanos.
+* **APIs REST**: 32 ficheros de ruta bajo `src-astro/src/pages/api` (medido 2026-10-29 con `find src-astro/src/pages/api -type f | wc -l`).
+* **Arquitectura**: Descentralizada y segura basada en nodos soberanos.
 * **Tiempo Real**: Funcionalidades en tiempo real para la gestión dinámica de sala y cocina.
 
 ## 🌟 Características Principales
@@ -52,7 +49,6 @@ El backend y frontend de Hosteler-IA están completamente implementados, son rob
 ### **🏛️ Arquitectura de Nodo Soberano (SWAL Pro)**
 - **Nodo Autónomo**: Operación independiente sin dependencia de servicios externos centralizados o intermediarios.
 - **Control Total de Datos**: Almacenamiento local y sincronización descentralizada.
-- **Escalabilidad Multi-nodo**: Capacidad de interconexión en red de nodos dentro del ecosistema SWAL.
 
 ## 🏗️ Arquitectura Tecnológica
 
@@ -73,7 +69,7 @@ src-astro/
 ├── src/components/          # Islas Svelte 5 (menu, orders, tables, client, ai, auth)
 ├── src/stores/              # Stores runes (inventory, menu, orders, cart, auth)
 ├── src/lib/                 # StorageAdapter, ledger, state machine, sync, auth, gating
-└── e2e/                     # Playwright 12 specs (flujos + a11y axe-core)
+└── e2e/                     # Playwright 38 specs (flujos + a11y axe-core)
 ```
 
 ## 📊 Performance
