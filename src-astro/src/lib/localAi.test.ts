@@ -40,6 +40,16 @@ describe('localAi', () => {
       expect(await detectLocalAiTier(env)).toBe('prompt-api');
     });
 
+    it('returns rules tier when unavailable', async () => {
+      const languageModel = {
+        availability: vi.fn().mockResolvedValue('unavailable'),
+        create: vi.fn(),
+      } as unknown as PromptApiLike;
+      const env = { languageModel };
+      expect(await promptApiState(env)).toBe('unavailable');
+      expect(await detectLocalAiTier(env)).toBe('rules');
+    });
+
     it('returns rules tier when downloadable', async () => {
       const languageModel = {
         availability: vi.fn().mockResolvedValue('downloadable'),
@@ -273,6 +283,22 @@ Top ventas: F x3`;
       const response = await localInfer(prompt, { languageModel });
       const parsed = parseRecommendations(response);
       expect(parsed[0].type).toBe('ops');
+    });
+
+    it('falls back to rules if engine prompt rejects when available', async () => {
+      const session = {
+        prompt: vi.fn().mockRejectedValue(new Error('fail')),
+        destroy: vi.fn(),
+      };
+      const languageModel = {
+        availability: vi.fn().mockResolvedValue('available'),
+        create: vi.fn().mockResolvedValue(session),
+      } as unknown as PromptApiLike;
+      const prompt = `Stock bajo: ninguno\nTop ventas: sin datos`;
+      const response = await localInfer(prompt, { languageModel });
+      const parsed = parseRecommendations(response);
+      expect(parsed[0].type).toBe('ops');
+      expect(session.destroy).toHaveBeenCalledOnce();
     });
 
     it('does not trigger download for downloadable tier and returns rules', async () => {
